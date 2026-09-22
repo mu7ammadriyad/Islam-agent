@@ -33,7 +33,7 @@ const GEMINI_API_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_K
   .split(',').map((s) => s.trim()).filter(Boolean);
 let currentKeyIndex = 0;
 
-const MODEL_CHAIN = (process.env.GEMINI_MODEL_CHAIN || 'gemini-3.5-flash-lite,gemini-3.5-flash-lite,gemini-3.1-flash-lite')
+const MODEL_CHAIN = (process.env.GEMINI_MODEL_CHAIN || 'gemma-4-26b-a4b-it,gemma-4-31b-it,gemini-3.1-flash-lite')
   .split(',').map((s) => s.trim()).filter(Boolean);
 let currentModelIndex = 0;
 
