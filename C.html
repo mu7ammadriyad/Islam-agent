@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بداية — إعلان 65 ثانية المتزامن مع الصوت</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'Readex Pro', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f4;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // =========================================================================
+        // 1. CONFIG & IDENTITY CONTRACT
+        // =========================================================================
+        export const CONFIG = {
+            fps: 30,
+            width: 1080,
+            height: 1920,
+            duration: 65.0
+        };
+        export const OUTPUT_FILENAME = "bedaya_ad_synced_65s";
+        export let audioBuffer = null;
+
+        const W = CONFIG.width;
+        const H = CONFIG.height;
+
+        const INK = '#1c1917';
+        const SEC = '#57534e';
+        const MUT = '#8c857f';
+        const BR  = '#e7e5e4';
+        const SOFT = '#f0eeeb';
+        const WS  = '#f5f5f4';
+
+        const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+        const sc = (t, a, b) => cl((t - a) / (b - a));
+        const eo = x => 1 - Math.pow(1 - x, 3);
+        const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+
+        function tx(s, x, y, size, col, w = 600, al = 'center', fam = 'R') {
+            ctx.font = `${w} ${size}px ${fam === 'J' ? '"Plus Jakarta Sans","Readex Pro"' : '"Readex Pro"'}, sans-serif`;
+            ctx.fillStyle = col;
+            ctx.textAlign = al;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s, x, y);
+        }
+
+        function ex(s, x, y, size, col, w = 400, al = 'left', dir = 'ltr', it = false) {
+            ctx.direction = dir;
+            ctx.font = `${it ? 'italic ' : ''}${w} ${size}px "Segoe UI", Calibri, "Readex Pro", Arial, sans-serif`;
+            ctx.fillStyle = col;
+            ctx.textAlign = al;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s, x, y);
+            ctx.direction = 'rtl';
+        }
+
+        // شعار بداية
+        const LP1 = new Path2D("m88.7 8.6c-4.5-4.1-9.7-6.6-17.1-7.5h-41.1c-6.5 0-12.5 1.6-17.3 5.5s-11.1 10.3-11.1 21.4v25.3c0 9.7 4.9 18.7 13.4 24.7l-3.1 12.3c-0.5 2.5 2.1 4.4 4.2 3.2l19.7-10.2h32.7c13.9 0 29-11.9 29-29.6v-25.5c-0.2-7.2-3.6-14.7-9.3-19.6zm4.1 44.2c0 13.1-9.8 24.9-24.4 24.9h-32.8c-0.5 0-0.9 0.2-1.3 0.4l-15.1 7.9 2.2-8.1c0.4-1.7-0.4-2.9-1.3-3.4-2.4-1.2-4.3-2.9-6.1-4.8-3.6-4.1-6-9.8-6.8-16.4v-24.7c0-11.7 10.4-22.1 21.4-22.1h42.5c10.6 0 21.7 9 21.7 22.3z");
+        const LP2 = new Path2D("m67.7 51c-1.1 1.1-7.3 5.9-16.7 6.3s-15.9-4.4-17.8-6c-1.3-1.3-3-1.5-4.3-0.3-1.1 1.1-1.3 3.1 0.4 4.2 4.5 3.5 10.5 7.2 20.6 7.2 7.3 0 13.8-2.2 18.2-5.1 3.3-2.3 4-2.8 4-4.4 0-1.9-2.1-3.5-4.2-2.1z");
+        
+        function logo(cx, cy, size, col = INK) {
+            ctx.save();
+            ctx.translate(cx - size / 2, cy - size * 0.475);
+            ctx.scale(size / 100, size / 100);
+            ctx.fillStyle = col;
+            ctx.strokeStyle = col;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.fill(LP1);
+            ctx.lineWidth = 2.7;
+            ctx.stroke(LP1);
+            ctx.fill(LP2);
+            ctx.lineWidth = 2;
+            ctx.stroke(LP2);
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 2. ICONS ENGINE (Iconify via Blobs)
+        // =========================================================================
+        const API = 'https://api.iconify.design/';
+        const SRC = {
+            wa: 'logos/whatsapp-icon', fb: 'logos/facebook', ig: 'skill-icons/instagram', tt: 'logos/tiktok-icon', tg: 'logos/telegram',
+            chk: 'tabler/check?color=%23ffffff', receipt: 'tabler/receipt-2?color=%231c1917', cck: 'tabler/circle-check?color=%231c1917', ckk: 'tabler/check?color=%231c1917'
+        };
+        const IMG = {};
+
+        function loadIcon(k) {
+            const u = API + SRC[k].replace(/^([^?]+)(\?(.*))?$/, (m, p, q, qq) => p + '.svg?height=256' + (qq ? '&' + qq : ''));
+            return fetch(u).then(r => r.text()).then(s => new Promise(res => {
+                const im = new Image();
+                im.onload = () => { IMG[k] = im; res(); };
+                im.onerror = res;
+                im.src = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
+            })).catch(() => {});
+        }
+
+        function icon(k, cx, cy, size) {
+            const im = IMG[k];
+            if (!im) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2);
+                ctx.fillStyle = BR;
+                ctx.fill();
+                return;
+            }
+            const r = (im.naturalWidth || 1) / (im.naturalHeight || 1);
+            const w = r >= 1 ? size : size * r;
+            const h = r >= 1 ? size / r : size;
+            ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+        }
+
+        function card(x, y, w, h, r = 32) {
+            ctx.save();
+            ctx.shadowColor = 'rgba(28,25,23,.09)';
+            ctx.shadowBlur = 50;
+            ctx.shadowOffsetY = 16;
+            rr(x, y, w, h, r);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.restore();
+            rr(x, y, w, h, r);
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // =========================================================================
+        // 3. WHATSAPP CHAT MODULE (توقيتات مطابقة للصوت)
+        // =========================================================================
+        const TYPED = [
+            { text: 'السعر كام لو سمحت؟', a: 1.0, b: 1.8, send: 2.2 },
+            { text: 'أيوه احجزلي', a: 4.6, b: 5.2, send: 5.6 },
+            { text: 'أحمد سامي - 0109 481 2236', a: 7.2, b: 8.2, send: 8.6 }
+        ];
+        const MSGS = [
+            { k: 'u', t: 2.2, ts: '٣:١٣ ص', text: 'السعر كام لو سمحت؟' },
+            { k: 'a', ty: 2.6, t0: 3.2, ts: '٣:١٣ ص', text: 'أهلاً بيك! باقة النمو بـ 850 ج.م في الشهر.. تحب أحجزلك؟' },
+            { k: 'u', t: 5.6, ts: '٣:١٤ ص', text: 'أيوه احجزلي' },
+            { k: 'a', ty: 6.0, t0: 6.5, ts: '٣:١٤ ص', text: 'تمام! ابعتلي اسمك ورقم موبايلك' },
+            { k: 'u', t: 8.6, ts: '٣:١٥ ص', text: 'أحمد سامي - 0109 481 2236' },
+            { k: 'a', ty: 9.0, t0: 9.5, ts: '٣:١٥ ص', text: 'تم تسجيل طلبك بنجاح!\nوهتلاقي بياناتك في جدول العملاء دلوقتي.' }
+        ];
+
+        const NOTE = 'الرسائل والمكالمات مُشفّرة بين الطرفين. لا يمكن لأي شخص خارج هذه الدردشة، ولا حتى واتساب، قراءتها أو الاستماع إليها. انقر لمعرفة المزيد.';
+        const WA = { hd: '#008069', hdD: '#006b5a', bg: '#efeae2', out: '#d9fdd3', inn: '#ffffff', tx: '#111b21', mt: '#667781', tick: '#53bdeb', acc: '#00a884', nt: '#54656f' };
+        const MI = {
+            back: 'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
+            vid: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z',
+            call: 'M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z',
+            more: 'M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
+            mic: 'M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
+            send: 'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z',
+            clip: 'M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z',
+            fav: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+            info: 'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',
+            done: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
+            all: 'M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z',
+            add: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z',
+            cam: 'M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
+            img: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
+            like: 'M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z',
+            up: 'M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z'
+        };
+        const MP = {};
+        function mi(k, cx, cy, s, col, flip = false, rot = 0) {
+            MP[k] = MP[k] || new Path2D(MI[k]);
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(rot * Math.PI / 180);
+            ctx.scale(flip ? -s / 24 : s / 24, s / 24);
+            ctx.translate(-12, -12);
+            ctx.fillStyle = col;
+            ctx.fill(MP[k], (k === 'add' || k === 'cam' || k === 'info') ? 'evenodd' : 'nonzero');
+            ctx.restore();
+        }
+
+        function wrap(text, maxW, font) {
+            ctx.font = font;
+            const outArr = [];
+            text.split('\n').forEach(par => {
+                let line = '';
+                par.split(' ').forEach(w => {
+                    const test = line ? line + ' ' + w : w;
+                    if (line && ctx.measureText(test).width > maxW) { outArr.push(line); line = w; } else line = test;
+                });
+                outArr.push(line);
+            });
+            return outArr;
+        }
+
+        let WP = null;
+        function wallpaper() {
+            if (WP) return WP;
+            WP = document.createElement('canvas');
+            WP.width = W; WP.height = H;
+            const c = WP.getContext('2d');
+            c.fillStyle = WA.bg; c.fillRect(0, 0, W, H);
+            c.strokeStyle = 'rgba(11,20,26,.055)'; c.lineWidth = 3; c.lineCap = 'round';
+            let s = 7;
+            const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+            for (let gy = 0; gy < H; gy += 150) for (let gx = 0; gx < W; gx += 150) {
+                const k = Math.floor(r() * 4);
+                c.save(); c.translate(gx + 30 + r() * 90, gy + 30 + r() * 90); c.rotate(r() * 6.28); c.beginPath();
+                if (k === 0) c.arc(0, 0, 16, 0, 6.28);
+                else if (k === 1) { c.moveTo(-14, 0); c.lineTo(14, 0); c.moveTo(0, -14); c.lineTo(0, 14); }
+                else if (k === 2) { c.moveTo(-18, 6); c.quadraticCurveTo(-9, -14, 0, 0); c.quadraticCurveTo(9, 14, 18, -6); }
+                else c.roundRect(-14, -14, 28, 28, 8);
+                c.stroke(); c.restore();
+            }
+            return WP;
+        }
+
+        function measure(m) {
+            const F = '400 42px "Readex Pro"', maxT = 760, meta = m.k === 'u' ? 160 : 118;
+            const ls = wrap(m.text, maxT, F);
+            ctx.font = F;
+            const lw = Math.max(...ls.map(l => ctx.measureText(l).width));
+            const last = ctx.measureText(ls[ls.length - 1]).width;
+            const fits = last + meta <= maxT;
+            return { ls, bw: (fits ? Math.max(lw, last + meta) : Math.max(lw, meta)) + 60, bh: 36 + ls.length * 62 + (fits ? 0 : 38) };
+        }
+
+        function drawBubble(m, y, p, st) {
+            const me = m.k === 'u', { ls, bw, bh } = m._m || (m._m = measure(m));
+            const bx = me ? 44 : 1036 - bw, rx = bx + bw;
+            ctx.save();
+            ctx.globalAlpha *= p;
+            ctx.translate(0, (1 - p) * 14);
+            ctx.fillStyle = me ? WA.out : WA.inn;
+            ctx.shadowColor = 'rgba(11,20,26,.14)'; ctx.shadowBlur = 1.5; ctx.shadowOffsetY = 2;
+            rr(bx, y, bw, bh, me ? [4, 24, 24, 24] : [24, 4, 24, 24]);
+            ctx.fill();
+            ctx.beginPath();
+            if (me) { ctx.moveTo(bx + 4, y); ctx.lineTo(bx - 15, y); ctx.quadraticCurveTo(bx - 4, y + 4, bx, y + 22); }
+            else { ctx.moveTo(rx - 4, y); ctx.lineTo(rx + 15, y); ctx.quadraticCurveTo(rx + 4, y + 4, rx, y + 22); }
+            ctx.closePath(); ctx.fill();
+            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+            ls.forEach((l, i) => tx(l, rx - 30, y + 49 + i * 62, 42, WA.tx, 400, 'right'));
+            const my = y + bh - 30;
+            tx(m.ts, bx + 30 + (me ? 48 : 0), my, 26, WA.mt, 400, 'left');
+            if (me) mi(st === 0 ? 'done' : 'all', bx + 48, my, 38, st === 2 ? WA.tick : WA.mt);
+            ctx.restore();
+        }
+
+        function chatScreen(t) {
+            ctx.drawImage(wallpaper(), 0, 0);
+            const AT = 228, AB = 1650;
+            const typing = MSGS.some(m => m.k === 'a' && t >= m.ty && t < m.t0);
+            const pr = m => eo(sc(t, m.k === 'u' ? m.t : m.t0, (m.k === 'u' ? m.t : m.t0) + 0.22));
+            const nl = wrap('\u2003\u2002' + NOTE, 820, '400 28px "Readex Pro"'), nh = 44 + nl.length * 42;
+
+            let total = 36 + 64 + 26 + nh + 30;
+            MSGS.forEach(m => { const p = pr(m); if (p > 0) total += ((m._m || (m._m = measure(m))).bh + 22) * p; });
+            let y = AT - Math.max(0, total - (AB - AT) + 10) + 36;
+
+            ctx.save();
+            ctx.beginPath(); ctx.rect(0, AT, W, AB - AT); ctx.clip();
+            ctx.font = '500 28px "Readex Pro"';
+            const dw = ctx.measureText('اليوم').width + 64;
+            ctx.save(); ctx.shadowColor = 'rgba(11,20,26,.12)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 2;
+            rr(W / 2 - dw / 2, y, dw, 64, 16); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+            tx('اليوم', W / 2, y + 33, 28, WA.nt, 500);
+            y += 90;
+            ctx.save(); ctx.shadowColor = 'rgba(11,20,26,.1)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 2;
+            rr(80, y, 920, nh, 18); ctx.fillStyle = '#ffeecd'; ctx.fill(); ctx.restore();
+            nl.forEach((l, i) => tx(l, 980, y + 22 + 21 + i * 42 + 2, 28, WA.nt, 400, 'right'));
+            const ly = y + 45;
+            ctx.fillStyle = WA.nt; rr(944, ly - 2, 22, 18, 4); ctx.fill();
+            ctx.strokeStyle = WA.nt; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.arc(955, ly - 3, 7, Math.PI, 0); ctx.stroke();
+            y += nh + 30;
+            MSGS.forEach((m, i) => {
+                const p = pr(m); if (p <= 0) return;
+                const nx = MSGS[i + 1], st = t < m.t + 0.3 ? 0 : (nx && t >= nx.ty ? 2 : 1);
+                drawBubble(m, y, p, st);
+                y += (m._m.bh + 22) * p;
+            });
+            ctx.restore();
+
+            waHeader(typing);
+            waInput(t);
+        }
+
+        function waHeader(typing) {
+            ctx.fillStyle = WA.hdD; ctx.fillRect(0, 0, W, 64);
+            tx('٣:١٣', 72, 33, 30, '#fff', 500, 'center');
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.moveTo(850, 44); ctx.lineTo(874, 44); ctx.lineTo(874, 20); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; rr(914, 20, 56, 26, 7); ctx.stroke();
+            rr(919, 25, 40, 16, 4); ctx.fill(); ctx.fillRect(972, 28, 5, 10);
+
+            ctx.fillStyle = WA.hd; ctx.fillRect(0, 64, W, 164);
+            mi('back', 1004, 146, 62, '#fff', true);
+            ctx.beginPath(); ctx.arc(906, 146, 54, 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill();
+            logo(906, 146, 72);
+            tx('بداية', 830, 126, 46, '#fff', 600, 'right');
+            ctx.font = '600 46px "Readex Pro"';
+            const bx = 830 - ctx.measureText('بداية').width - 28;
+            ctx.beginPath(); ctx.arc(bx, 126, 16, 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill();
+            mi('done', bx, 126, 24, WA.hd);
+            tx(typing ? 'يكتب…' : 'متصل', 830, 184, 30, 'rgba(255,255,255,.85)', 400, 'right');
+            mi('more', 62, 146, 62, '#fff'); mi('call', 168, 146, 54, '#fff'); mi('vid', 280, 146, 62, '#fff');
+        }
+
+        function waInput(t) {
+            const cur = TYPED.find(w => t >= w.a - 0.3 && t < w.send);
+            const shown = cur && t >= cur.a ? cur.text.slice(0, Math.ceil(cur.text.length * sc(t, cur.a, cur.b))) : '';
+            ctx.save(); ctx.shadowColor = 'rgba(11,20,26,.16)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 2;
+            rr(176, 1680, 876, 134, 67); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+            ctx.strokeStyle = WA.mt; ctx.fillStyle = WA.mt; ctx.lineWidth = 4.5;
+            ctx.beginPath(); ctx.arc(1000, 1747, 27, 0, 6.283); ctx.stroke();
+            ctx.beginPath(); ctx.arc(1000, 1749, 14, 0.2, Math.PI - 0.2); ctx.stroke();
+            [-9, 9].forEach(d => { ctx.beginPath(); ctx.arc(1000 + d, 1738, 3, 0, 6.283); ctx.fill(); });
+            if (cur) {
+                tx(shown, 945, 1749, 42, WA.tx, 400, 'right');
+                ctx.font = '400 42px "Readex Pro"';
+                const cw = shown ? ctx.measureText(shown).width : 0;
+                if (t < cur.b || Math.floor(t * 2.5) % 2 === 0) { ctx.fillStyle = WA.acc; ctx.fillRect(945 - cw - (shown ? 4 : 0), 1724, 3, 50); }
+            } else tx('رسالة', 945, 1749, 42, WA.mt, 400, 'right');
+            mi('clip', 352, 1747, 50, WA.mt, false, 45);
+            if (!shown) {
+                ctx.strokeStyle = WA.mt; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
+                ctx.beginPath(); ctx.roundRect(232, 1734, 54, 40, 9); ctx.stroke();
+                ctx.beginPath(); ctx.arc(259, 1754, 11, 0, 6.283); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(249, 1734); ctx.lineTo(253, 1725); ctx.lineTo(265, 1725); ctx.lineTo(269, 1734); ctx.stroke();
+            }
+            let press = 0;
+            TYPED.forEach(w => { if (Math.abs(t - w.send) < 0.14) press = 1 - Math.abs(t - w.send) / 0.14; });
+            ctx.save(); ctx.translate(104, 1747); ctx.scale(1 - 0.1 * press, 1 - 0.1 * press);
+            ctx.beginPath(); ctx.arc(0, 0, 67, 0, 6.283); ctx.fillStyle = WA.acc; ctx.fill();
+            if (shown) mi('send', 0, 0, 58, '#fff', true); else mi('mic', 0, 0, 62, '#fff');
+            ctx.restore();
+            ctx.fillStyle = 'rgba(17,27,33,.7)'; rr(400, 1870, 280, 10, 5); ctx.fill();
+        }
+
+        // =========================================================================
+        // 4. MESSENGER, TIKTOK, INSTAGRAM MODULES
+        // =========================================================================
+        const MS = { bl: '#0084ff', inb: '#f0f0f0', tx: '#050505', mt: '#65676b', gr: '#31a24c', fld: '#f0f2f5' };
+        const MTYPED = [
+            { text: 'السلام عليكم، بتوصلوا الإسكندرية؟', a: 0.4, b: 1.1, send: 1.4 },
+            { text: 'وممكن أستبدل لو المقاس مش مناسب؟', a: 3.3, b: 4.1, send: 4.5 }
+        ];
+        const MMSGS = [
+            { k: 'u', t: 1.4, text: MTYPED[0].text },
+            { k: 'a', ty: 1.9, t0: 2.6, text: 'وعليكم السلام! أيوه بنوصل لكل المحافظات، الشحن ٥٠ ج.م والتوصيل خلال ٢-٣ أيام.' },
+            { k: 'u', t: 4.5, text: MTYPED[1].text },
+            { k: 'a', ty: 5.0, t0: 5.7, text: 'طبعًا! الاستبدال متاح خلال ١٤ يوم من الاستلام، من غير أي مصاريف.' }
+        ];
+        const QR = ['تتبع الشحنة', 'سياسة الاستبدال', 'كلّم موظف'];
+
+        function mmeasure(m) {
+            const F = '400 43px "Readex Pro"', ls = wrap(m.text, 660, F);
+            ctx.font = F;
+            return { ls, bw: Math.max(...ls.map(l => ctx.measureText(l).width)) + 76, bh: 50 + ls.length * 58 };
+        }
+
+        function mAvatar(cx, cy, r) {
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.strokeStyle = '#e4e6eb'; ctx.lineWidth = 2; ctx.stroke();
+            logo(cx, cy, r * 1.35);
+        }
+
+        function mBubble(m, y, p, stage) {
+            const me = m.k === 'u', { ls, bw, bh } = m._m || (m._m = mmeasure(m));
+            const rx = me ? 44 + bw : 956, bx = rx - bw;
+            ctx.save();
+            ctx.globalAlpha *= p;
+            ctx.translate(me ? (1 - p) * -30 : (1 - p) * 30, (1 - p) * 10);
+            rr(bx, y, bw, bh, 42);
+            ctx.fillStyle = me ? MS.bl : MS.inb; ctx.fill();
+            ls.forEach((l, i) => tx(l, rx - 38, y + 25 + 29 + i * 58, 43, me ? '#fff' : MS.tx, 400, 'right'));
+            if (!me) mAvatar(1006, y + bh - 31, 31);
+            else {
+                const sx = bx + 26, sy = y + bh + 28;
+                if (stage === 0) { ctx.beginPath(); ctx.arc(sx, sy, 13, 0, 6.283); ctx.strokeStyle = MS.mt; ctx.lineWidth = 3; ctx.stroke(); }
+                else if (stage === 1) { ctx.beginPath(); ctx.arc(sx, sy, 13, 0, 6.283); ctx.fillStyle = MS.mt; ctx.fill(); mi('done', sx, sy, 17, '#fff'); }
+                else mAvatar(sx, sy, 17);
+            }
+            ctx.restore();
+        }
+
+        function messengerScreen(tm) {
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+            const AT = 214, AB = 1590;
+            const pr = m => eo(sc(tm, m.k === 'u' ? m.t : m.t0, (m.k === 'u' ? m.t : m.t0) + 0.2));
+            const typ = m => m.k === 'a' && tm >= m.ty && tm < m.t0;
+            const ih = m => (m._m || (m._m = mmeasure(m))).bh + (m.k === 'u' ? 56 : 26);
+            let total = 440 + 70;
+            MMSGS.forEach(m => { if (typ(m)) total += 114; else { const p = pr(m); if (p > 0) total += ih(m) * p; } });
+            let y = AT - Math.max(0, total - (AB - AT) + 10) + 30;
+
+            ctx.save();
+            ctx.beginPath(); ctx.rect(0, AT, W, AB - AT); ctx.clip();
+            mAvatar(540, y + 80, 80);
+            tx('بداية', 540, y + 210, 52, MS.tx, 700);
+            tx('صفحة • خدمات الأعمال', 540, y + 264, 30, MS.mt, 400);
+            tx('وكيل مبيعات ذكي • يرد خلال ثوانٍ', 540, y + 308, 29, MS.mt, 400);
+            rr(410, y + 346, 260, 66, 33); ctx.fillStyle = MS.fld; ctx.fill();
+            tx('عرض الصفحة', 540, y + 380, 30, MS.tx, 600);
+            y += 440;
+            tx('اليوم ٣:٢٠ ص', 540, y + 10, 27, MS.mt, 400);
+            y += 70;
+            MMSGS.forEach((m, i) => {
+                if (typ(m)) {
+                    rr(806, y, 150, 88, 44); ctx.fillStyle = MS.inb; ctx.fill();
+                    for (let d = 0; d < 3; d++) {
+                        const ph = (((tm / 1.1 - d * 0.14) % 1) + 1) % 1, k = ph < 0.3 ? ph / 0.3 : ph < 0.6 ? (0.6 - ph) / 0.3 : 0;
+                        ctx.beginPath(); ctx.arc(881 + (1 - d) * 32, y + 44 - 9 * k, 9, 0, 6.283);
+                        ctx.fillStyle = `rgba(101,103,107,${0.45 + 0.55 * k})`; ctx.fill();
+                    }
+                    mAvatar(1006, y + 57, 31);
+                    y += 114; return;
+                }
+                const p = pr(m); if (p <= 0) return;
+                const nx = MMSGS[i + 1];
+                mBubble(m, y, p, tm < m.t + 0.4 ? 0 : (nx && tm >= nx.ty ? 2 : 1));
+                y += ih(m) * p;
+            });
+            ctx.restore();
+
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, AT);
+            tx('٣:٢٠', 120, 36, 34, MS.tx, 700, 'center');
+            ctx.strokeStyle = MS.tx; ctx.lineWidth = 3; rr(914, 22, 56, 26, 7); ctx.stroke();
+            ctx.fillStyle = MS.tx; rr(919, 27, 40, 16, 4); ctx.fill(); ctx.fillRect(972, 30, 5, 10);
+            mi('back', 1004, 140, 62, MS.bl, true);
+            mAvatar(905, 140, 40);
+            ctx.beginPath(); ctx.arc(934, 168, 12, 0, 6.283); ctx.fillStyle = MS.gr; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
+            tx('بداية', 846, 124, 42, MS.tx, 700, 'right');
+            tx('نشط الآن', 846, 172, 29, MS.mt, 400, 'right');
+            mi('info', 62, 140, 62, MS.bl); mi('vid', 170, 140, 62, MS.bl); mi('call', 274, 140, 52, MS.bl);
+            ctx.fillStyle = '#e4e6eb'; ctx.fillRect(0, AT - 2, W, 2);
+
+            const q = eo(sc(tm, 3.0, 3.3)) * (1 - sc(tm, 4.5, 4.7));
+            if (q > 0) {
+                ctx.save(); ctx.globalAlpha *= q; ctx.translate(0, (1 - q) * 20);
+                let x = 1040;
+                QR.forEach(s => {
+                    ctx.font = '500 33px "Readex Pro"';
+                    const w = ctx.measureText(s).width + 64;
+                    rr(x - w, 1596, w, 70, 35); ctx.strokeStyle = MS.bl; ctx.lineWidth = 2.5; ctx.stroke();
+                    tx(s, x - w / 2, 1632, 33, MS.bl, 500, 'center');
+                    x -= w + 18;
+                });
+                ctx.restore();
+            }
+
+            const cur = MTYPED.find(w => tm >= w.a - 0.3 && tm < w.send);
+            const shown = cur && tm >= cur.a ? cur.text.slice(0, Math.ceil(cur.text.length * sc(tm, cur.a, cur.b))) : '';
+            const R = shown ? 940 : 690;
+            if (shown) mi('back', 1004, 1760, 50, MS.bl);
+            else { mi('add', 1004, 1760, 62, MS.bl); mi('cam', 912, 1760, 58, MS.bl); mi('img', 820, 1760, 56, MS.bl); mi('mic', 732, 1760, 56, MS.bl); }
+            rr(150, 1712, R - 150 + (shown ? 40 : 0), 96, 48); ctx.fillStyle = MS.fld; ctx.fill();
+            const tr = R + (shown ? 40 : 0) - 34;
+            if (shown) {
+                tx(shown, tr, 1762, 42, MS.tx, 400, 'right');
+                ctx.font = '400 42px "Readex Pro"';
+                const cw = ctx.measureText(shown).width;
+                if (tm < cur.b || Math.floor(tm * 2.5) % 2 === 0) { ctx.fillStyle = MS.bl; ctx.fillRect(tr - cw - 4, 1738, 3, 50); }
+            } else tx('Aa', tr, 1762, 42, MS.mt, 400, 'right', 'J');
+            ctx.strokeStyle = MS.bl; ctx.fillStyle = MS.bl; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(208, 1760, 25, 0, 6.283); ctx.stroke();
+            ctx.beginPath(); ctx.arc(208, 1763, 13, 0.2, Math.PI - 0.2); ctx.stroke();
+            [-8, 8].forEach(d => { ctx.beginPath(); ctx.arc(208 + d, 1753, 3, 0, 6.283); ctx.fill(); });
+            let press = 0;
+            MTYPED.forEach(w => { if (Math.abs(tm - w.send) < 0.14) press = 1 - Math.abs(tm - w.send) / 0.14; });
+            ctx.save(); ctx.translate(76, 1760); ctx.scale(1 - 0.12 * press, 1 - 0.12 * press);
+            if (shown) mi('send', 0, 0, 64, MS.bl, true); else mi('like', 0, 0, 66, MS.bl);
+            ctx.restore();
+            ctx.fillStyle = '#050505'; rr(400, 1870, 280, 10, 5); ctx.fill();
+        }
+
+        function dmStatusBar(time) {
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, 214);
+            tx(time, 120, 36, 34, '#000', 700, 'center');
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 3; rr(914, 22, 56, 26, 7); ctx.stroke();
+            ctx.fillStyle = '#000'; rr(919, 27, 40, 16, 4); ctx.fill(); ctx.fillRect(972, 30, 5, 10);
+        }
+
+        function dmTyped(tk, list) {
+            const cur = list.find(w => tk >= w.a - 0.3 && tk < w.send);
+            return { cur, shown: cur && tk >= cur.a ? cur.text.slice(0, Math.ceil(cur.text.length * sc(tk, cur.a, cur.b))) : '' };
+        }
+
+        function dmSmile(cx, cy, r, col) {
+            ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy + 3, r * 0.52, 0.2, Math.PI - 0.2); ctx.stroke();
+            [-r * 0.33, r * 0.33].forEach(d => { ctx.beginPath(); ctx.arc(cx + d, cy - r * 0.3, 3, 0, 6.283); ctx.fill(); });
+        }
+
+        function dmScreen(tk, C) {
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+            const AT = 214, AB = 1650, MS = C.msgs;
+            const st = m => m.k === 'u' ? m.t : m.t0, pr = m => eo(sc(tk, st(m), st(m) + 0.2));
+            const typ = m => m.k === 'a' && tk >= m.ty && tk < m.t0;
+            const mm = m => m._m || (m._m = mmeasure(m));
+            const ih = m => mm(m).bh + (m.k === 'u' ? 58 : 28);
+            let total = C.intro + 70, lastU = -1;
+            MS.forEach((m, i) => { if (m.k === 'u' && pr(m) > 0) lastU = i; if (typ(m)) total += 114; else { const p = pr(m); if (p > 0) total += ih(m) * p; } });
+            let y = AT - Math.max(0, total - (AB - AT) + 10) + 30;
+
+            ctx.save(); ctx.beginPath(); ctx.rect(0, AT, W, AB - AT); ctx.clip();
+            C.drawIntro(y); y += C.intro;
+            tx(C.stamp, 540, y + 10, 27, C.mt, 400); y += 70;
+            MS.forEach((m, i) => {
+                if (typ(m)) {
+                    rr(806, y, 150, 88, 44); ctx.fillStyle = C.inb; ctx.fill();
+                    for (let d = 0; d < 3; d++) {
+                        const ph = (((tk / 1.1 - d * 0.14) % 1) + 1) % 1, k = ph < 0.3 ? ph / 0.3 : ph < 0.6 ? (0.6 - ph) / 0.3 : 0;
+                        ctx.beginPath(); ctx.arc(881 + (1 - d) * 32, y + 44 - 9 * k, 9, 0, 6.283);
+                        ctx.fillStyle = `rgba(101,103,107,${0.45 + 0.55 * k})`; ctx.fill();
+                    }
+                    mAvatar(1006, y + 57, 31); y += 114; return;
+                }
+                const p = pr(m); if (p <= 0) return;
+                const me = m.k === 'u', { ls, bw, bh } = mm(m), rx = me ? 44 + bw : 956, bx = rx - bw;
+                ctx.save(); ctx.globalAlpha *= p; ctx.translate(me ? (1 - p) * -30 : (1 - p) * 30, (1 - p) * 10);
+                rr(bx, y, bw, bh, 42); ctx.fillStyle = me ? C.out() : C.inb; ctx.fill();
+                ls.forEach((l, j) => tx(l, rx - 38, y + 54 + j * 58, 43, me ? '#fff' : C.tx, 400, 'right'));
+                if (!me) mAvatar(1006, y + bh - 31, 31);
+                if (m.react && tk >= m.react) {
+                    const rp = eo(sc(tk, m.react, m.react + 0.25));
+                    ctx.save(); ctx.translate(bx + 34, y + bh + 2); ctx.scale(rp, rp);
+                    ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#e4e4e7'; ctx.lineWidth = 2.5; ctx.stroke();
+                    mi('fav', 0, 1, 30, '#ed4956'); ctx.restore();
+                }
+                if (me && i === lastU) {
+                    const nx = MS[i + 1];
+                    tx(nx && tk >= nx.ty ? 'تمت المشاهدة' : 'تم الإرسال', bx + 6, y + bh + 26, 24, C.mt, 400, 'left');
+                }
+                ctx.restore();
+                y += ih(m) * p;
+            });
+            ctx.restore();
+            C.header(); C.input(tk);
+        }
+
+        const TT_TYPED = [
+            { text: 'مساء الخير، فيه خصم على باقة البداية؟', a: 0.3, b: 1.0, send: 1.2 },
+            { text: 'فعّلها لو سمحت', a: 2.3, b: 2.8, send: 3.0 }
+        ];
+        const DM_TT = {
+            intro: 360, stamp: 'اليوم ٣:٢١ ص', mt: '#8a8b91', tx: '#161823', inb: '#f1f1f2', out: () => '#fe2c55',
+            msgs: [
+                { k: 'u', t: 1.2, text: TT_TYPED[0].text },
+                { k: 'a', ty: 1.5, t0: 2.0, text: 'أهلاً بيك! باقة البداية بـ 450 ج.م في الشهر، ومع الدفع السنوي بتوفر 20%.. تحب أفعّلها؟' },
+                { k: 'u', t: 3.0, text: TT_TYPED[1].text },
+                { k: 'a', ty: 3.3, t0: 3.8, text: 'تمام، اتفعّلت الباقة! الفاتورة هتوصلك دلوقتي.' }
+            ],
+            drawIntro(y) {
+                mAvatar(540, y + 70, 62);
+                tx('بداية', 540, y + 174, 44, '#161823', 700);
+                tx('@bedaya.store • ٤٢٠ ألف متابع', 540, y + 222, 28, '#8a8b91', 400);
+                rr(410, y + 262, 260, 62, 31); ctx.fillStyle = '#f1f1f2'; ctx.fill();
+                tx('عرض الملف', 540, y + 294, 29, '#161823', 600);
+            },
+            header() {
+                dmStatusBar('٣:٢١');
+                mi('back', 1004, 140, 62, '#161823', true); mi('more', 70, 140, 62, '#161823');
+                tx('بداية', 540, 124, 42, '#161823', 700); tx('نشط الآن', 540, 172, 27, '#8a8b91', 400);
+                ctx.fillStyle = '#ececec'; ctx.fillRect(0, 212, W, 2);
+            },
+            input(tk) {
+                const { cur, shown } = dmTyped(tk, TT_TYPED);
+                rr(170, 1712, 870, 96, 48); ctx.fillStyle = '#f1f1f2'; ctx.fill();
+                if (cur) {
+                    tx(shown, 1000, 1762, 40, '#161823', 400, 'right');
+                    ctx.font = '400 40px "Readex Pro"';
+                    const cw = shown ? ctx.measureText(shown).width : 0;
+                    if (tk < cur.b || Math.floor(tk * 2.5) % 2 === 0) { ctx.fillStyle = '#fe2c55'; ctx.fillRect(1000 - cw - (shown ? 3 : 0), 1738, 3, 48); }
+                } else tx('أرسل رسالة...', 1000, 1762, 38, '#8a8b91', 400, 'right');
+                dmSmile(225, 1760, 25, '#8a8b91');
+                const pr = TT_TYPED.some(w => Math.abs(tk - w.send) < 0.14) ? 0.88 : 1;
+                ctx.save(); ctx.translate(90, 1760); ctx.scale(pr, pr);
+                if (shown) { ctx.beginPath(); ctx.arc(0, 0, 38, 0, 6.283); ctx.fillStyle = '#fe2c55'; ctx.fill(); mi('up', 0, 0, 44, '#fff'); }
+                else mi('add', 0, 0, 66, '#161823');
+                ctx.restore();
+                ctx.fillStyle = '#000'; rr(400, 1870, 280, 10, 5); ctx.fill();
+            }
+        };
+        function tiktokScreen(tk) { dmScreen(tk, DM_TT); }
+
+        const IG_TYPED = [
+            { text: 'أهلاً، المقاس M متاح؟', a: 0.3, b: 0.95, send: 1.2 },
+            { text: 'تمام، ابعتلي رابط الدفع', a: 2.8, b: 3.4, send: 3.6 }
+        ];
+        const DM_IG = {
+            intro: 440, stamp: 'اليوم ٣:٢٢ ص', mt: '#737373', tx: '#000', inb: '#efefef',
+            out() { const g = ctx.createLinearGradient(0, 214, 0, 1700); g.addColorStop(0, '#a64bff'); g.addColorStop(1, '#3b8df0'); return g; },
+            msgs: [
+                { k: 'u', t: 1.2, text: IG_TYPED[0].text },
+                { k: 'a', ty: 1.6, t0: 2.2, react: 2.7, text: 'أهلاً بيك! أيوه المقاس M متاح دلوقتي وتوصيله خلال يومين.' },
+                { k: 'u', t: 3.6, text: IG_TYPED[1].text },
+                { k: 'a', ty: 4.0, t0: 4.6, text: 'حاضر، ده رابط الدفع الآمن.. وهيتسجل طلبك في ثواني.' }
+            ],
+            drawIntro(y) {
+                mAvatar(540, y + 86, 84);
+                tx('بداية', 540, y + 212, 50, '#000', 700);
+                tx('bedaya.store • Instagram', 540, y + 264, 29, '#737373', 400, 'center', 'J');
+                tx('٨٥ ألف متابع • ١٢٤ منشور', 540, y + 306, 28, '#737373', 400);
+                rr(370, y + 346, 340, 66, 33); ctx.fillStyle = '#efefef'; ctx.fill();
+                tx('عرض الملف الشخصي', 540, y + 379, 29, '#000', 600);
+            },
+            header() {
+                dmStatusBar('٣:٢٢');
+                mi('back', 1004, 140, 62, '#000', true);
+                mAvatar(905, 140, 40);
+                tx('بداية', 846, 124, 38, '#000', 700, 'right');
+                tx('bedaya.store', 846, 170, 27, '#737373', 400, 'right', 'J');
+                mi('vid', 76, 140, 62, '#000'); mi('call', 180, 140, 52, '#000');
+                ctx.fillStyle = '#efefef'; ctx.fillRect(0, 212, W, 2);
+            },
+            input(tk) {
+                const { cur, shown } = dmTyped(tk, IG_TYPED);
+                rr(40, 1706, 1000, 104, 52); ctx.strokeStyle = '#dbdbdb'; ctx.lineWidth = 2.5; ctx.stroke();
+                ctx.beginPath(); ctx.arc(992, 1758, 40, 0, 6.283);
+                const g = ctx.createLinearGradient(952, 1718, 1032, 1798); g.addColorStop(0, '#3797f0'); g.addColorStop(1, '#0a5ed8');
+                ctx.fillStyle = g; ctx.fill(); mi('cam', 992, 1758, 44, '#fff');
+                if (cur) {
+                    tx(shown, 925, 1760, 40, '#000', 400, 'right');
+                    ctx.font = '400 40px "Readex Pro"';
+                    const cw = ctx.measureText(shown).width;
+                    if (tk < cur.b || Math.floor(tk * 2.5) % 2 === 0) { ctx.fillStyle = '#3797f0'; ctx.fillRect(925 - cw - (shown ? 3 : 0), 1736, 3, 48); }
+                } else tx('رسالة...', 925, 1760, 38, '#737373', 400, 'right');
+                if (shown) tx('إرسال', 120, 1760, 38, '#3797f0', 700, 'center');
+                else {
+                    mi('mic', 100, 1758, 50, '#000'); mi('img', 190, 1758, 50, '#000');
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(262, 1736, 46, 46, 13); ctx.stroke();
+                }
+                ctx.fillStyle = '#000'; rr(400, 1870, 280, 10, 5); ctx.fill();
+            }
+        };
+        function instagramScreen(tk) { dmScreen(tk, DM_IG); }
+
+        // =========================================================================
+        // 5. EXCEL CRM
+        // =========================================================================
+        const COLS = [{ w: 210, h: 'الاسم' }, { w: 214, h: 'الهاتف' }, { w: 150, h: 'المنصة' }, { w: 170, h: 'الباقة' }, { w: 110, h: 'السعر' }, { w: 162, h: 'الحالة' }];
+        const ROWS = [
+            ['منى عبد الله', '0111 452 9087', 'إنستغرام', 'باقة البداية', '450', 'جديد'],
+            ['كريم حسن', '0122 874 3310', 'واتساب', 'باقة الاحتراف', '1500', 'قيد المتابعة'],
+            ['سارة محمود', '0106 215 7764', 'فيسبوك', 'باقة النمو', '850', 'مؤكد'],
+            ['ياسر فتحي', '0100 639 4825', 'تيك توك', 'باقة البداية', '450', 'قيد المتابعة'],
+            ['هند إبراهيم', '0155 302 1198', 'واتساب', 'باقة النمو', '850', 'مؤكد'],
+            ['نور الدين', '0120 557 3019', 'تيك توك', 'باقة النمو', '850', 'مؤكد'],
+            ['دينا سمير', '0114 286 9403', 'واتساب', 'باقة البداية', '450', 'جديد'],
+            ['طارق عادل', '0101 742 6658', 'إنستغرام', 'باقة الاحتراف', '1500', 'مؤكد'],
+            ['رنا يوسف', '0127 318 5520', 'فيسبوك', 'باقة البداية', '450', 'قيد المتابعة'],
+            ['محمود رضا', '0150 964 2271', 'واتساب', 'باقة النمو', '850', 'مؤكد']
+        ];
+        const NEWROWS = [
+            { vals: ['أحمد سامي', '0109 481 2236', 'واتساب', 'باقة النمو', '850', 'مؤكد'], times: [1.2, 1.7, 2.2, 2.65, 3.1, 3.55], dur: 0.4 },
+            { vals: ['ليلى مصطفى', '0112 678 4451', 'إنستغرام', 'باقة البداية', '450', 'جديد'], times: [5.2, 5.5, 5.8, 6.1, 6.4, 6.7], dur: 0.25 },
+            { vals: ['عمر خالد', '0128 903 7712', 'فيسبوك', 'باقة الاحتراف', '1500', 'قيد المتابعة'], times: [7.2, 7.5, 7.8, 8.1, 8.4, 8.7], dur: 0.25 }
+        ];
+        const FIRST_NEW = 12;
+        const STY = { 'مؤكد': ['#c6efce', '#006100'], 'قيد المتابعة': ['#ffeb9c', '#9c5700'], 'جديد': ['#ddebf7', '#1f4e79'] };
+        const LET = 'ABCDEF';
+
+        function excel(t) {
+            const X = 0, Y = 0, Wd = W, Hh = H, NR = 20, RHW = 64, HEAD = 350, FOOT = 92;
+            const RH = (Hh - HEAD - FOOT) / NR;
+            const GR = X + Wd - RHW;
+            const TOP = Y + HEAD;
+            const colR = [], colL = [];
+            let cur = GR;
+
+            COLS.forEach(cc => { colR.push(cur); cur -= cc.w; colL.push(cur); });
+            const newTxt = (nr, i) => t < nr.times[i] ? '' : nr.vals[i].slice(0, Math.ceil(nr.vals[i].length * sc(t, nr.times[i], nr.times[i] + nr.dur)));
+            
+            let ak = 0, ai = 0;
+            NEWROWS.forEach((nr, k) => nr.times.forEach((ct, i) => { if (t >= ct) { ak = k; ai = i; } }));
+            const an = NEWROWS[ak];
+            const editing = t >= an.times[ai] && t < an.times[ai] + an.dur;
+            const actRow = FIRST_NEW + ak;
+
+            ctx.save();
+            ctx.fillStyle = '#fff'; ctx.fillRect(X, Y, Wd, Hh);
+
+            // Title Bar
+            ctx.fillStyle = '#217346'; ctx.fillRect(X, Y, Wd, 70);
+            rr(X + 22, Y + 16, 38, 38, 8); ctx.fillStyle = '#fff'; ctx.fill();
+            ex('X', X + 41, Y + 36, 28, '#217346', 800, 'center');
+            ex('AutoSave', X + 82, Y + 35, 20, '#fff', 500);
+            rr(X + 178, Y + 22, 52, 27, 13.5); ctx.fillStyle = '#0f4a29'; ctx.fill();
+            ctx.beginPath(); ctx.arc(X + 216, Y + 35.5, 9, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+            ex('On', X + 240, Y + 35, 18, '#fff', 500);
+            ex('Bedaya_CRM.xlsx', X + 300, Y + 35, 24, '#fff', 600);
+            ex(editing ? 'Saving…' : '✓ Saved', X + 535, Y + 36, 20, 'rgba(255,255,255,.88)', 400);
+
+            rr(X + Wd - 262, Y + 15, 240, 40, 20); ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(X + Wd - 236, Y + 34, 7, 0, Math.PI * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.4; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(X + Wd - 231, Y + 39); ctx.lineTo(X + Wd - 225, Y + 45); ctx.stroke();
+            ex('Search', X + Wd - 212, Y + 36, 21, 'rgba(255,255,255,.92)', 400);
+
+            // Ribbon Tabs
+            ctx.fillStyle = '#f3f3f3'; ctx.fillRect(X, Y + 70, Wd, 182);
+            const tabs = ['File', 'Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'];
+            let tx0 = X + 26;
+            tabs.forEach(n => {
+                ctx.font = '400 22px "Segoe UI",Calibri,"Readex Pro",Arial,sans-serif';
+                const tw = ctx.measureText(n).width;
+                const on = n === 'Home';
+                ex(n, tx0, Y + 98, 22, on ? '#217346' : '#323130', on ? 600 : 400);
+                if (on) { ctx.fillStyle = '#217346'; ctx.fillRect(tx0, Y + 116, tw, 4); }
+                tx0 += tw + 38;
+            });
+
+            rr(X + 10, Y + 124, Wd - 20, 122, 10); ctx.fillStyle = '#fbfbfb'; ctx.fill(); ctx.strokeStyle = '#e1dfdd'; ctx.lineWidth = 1.5; ctx.stroke();
+            const sep = x => { ctx.fillStyle = '#e1dfdd'; ctx.fillRect(x, Y + 136, 1.5, 98); };
+            const glabel = (s, x) => ex(s, x, Y + 232, 17, '#605e5c', 400, 'center');
+
+            rr(X + 64, Y + 146, 44, 52, 6); ctx.strokeStyle = '#605e5c'; ctx.lineWidth = 3; ctx.stroke();
+            rr(X + 74, Y + 138, 24, 15, 4); ctx.fillStyle = '#217346'; ctx.fill();
+            ex('Paste', X + 86, Y + 215, 17, '#323130', 400, 'center');
+            glabel('Clipboard', X + 97); sep(X + 178);
+
+            rr(X + 192, Y + 140, 144, 34, 4); ctx.strokeStyle = '#c8c6c4'; ctx.lineWidth = 1.5; ctx.stroke(); ex('Calibri', X + 204, Y + 157, 20, '#323130');
+            rr(X + 346, Y + 140, 58, 34, 4); ctx.stroke(); ex('11', X + 360, Y + 157, 20, '#323130');
+            ex('B', X + 210, Y + 200, 26, '#323130', 800, 'center'); ex('I', X + 246, Y + 200, 26, '#323130', 400, 'center', 'ltr', true);
+            ex('U', X + 282, Y + 200, 26, '#323130', 400, 'center'); ctx.fillStyle = '#323130'; ctx.fillRect(X + 274, Y + 213, 17, 2);
+            ctx.strokeStyle = '#c8c6c4'; rr(X + 312, Y + 184, 34, 32, 4); ctx.stroke();
+            ctx.fillStyle = '#ffeb3b'; ctx.fillRect(X + 318, Y + 207, 22, 5); ex('A', X + 329, Y + 195, 20, '#323130', 600, 'center');
+            rr(X + 356, Y + 184, 34, 32, 4); ctx.stroke(); ctx.fillStyle = '#c00000'; ctx.fillRect(X + 362, Y + 207, 22, 5); ex('A', X + 373, Y + 195, 20, '#323130', 600, 'center');
+            glabel('Font', X + 298); sep(X + 420);
+
+            [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([i, j]) => {
+                const bx = X + 440 + i * 62, by = Y + 146 + j * 42;
+                ctx.strokeStyle = '#605e5c'; ctx.lineWidth = 2.6;
+                [[28, 0], [20, 9], [28, 18]].forEach(([l, o]) => {
+                    ctx.beginPath(); ctx.moveTo(bx, by + o); ctx.lineTo(bx + l, by + o); ctx.stroke();
+                });
+            });
+            glabel('Alignment', X + 503); sep(X + 566);
+
+            rr(X + 580, Y + 140, 150, 34, 4); ctx.strokeStyle = '#c8c6c4'; ctx.lineWidth = 1.5; ctx.stroke(); ex('General', X + 592, Y + 157, 20, '#323130');
+            ex('%', X + 596, Y + 200, 24, '#323130', 500, 'center'); ex(',', X + 646, Y + 197, 28, '#323130', 700, 'center'); ex('.00', X + 704, Y + 200, 20, '#323130', 500, 'center');
+            glabel('Number', X + 655); sep(X + 746);
+
+            rr(X + 772, Y + 142, 72, 50, 5); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#c8c6c4'; ctx.stroke();
+            ctx.fillStyle = '#217346'; ctx.fillRect(X + 772, Y + 142, 72, 16);
+            ctx.fillStyle = '#e2efda'; ctx.fillRect(X + 772, Y + 172, 72, 10);
+            ex('Format as Table', X + 808, Y + 207, 17, '#323130', 400, 'center');
+            ctx.fillStyle = '#ffeb9c'; rr(X + 862, Y + 142, 54, 28, 4); ctx.fill(); ctx.fillStyle = '#c6efce'; rr(X + 922, Y + 142, 54, 28, 4); ctx.fill();
+            ex('Cond. Format', X + 919, Y + 207, 17, '#323130', 400, 'center');
+            glabel('Styles', X + 890); sep(X + 1000);
+            ex('Editing', X + 1040, Y + 190, 17, '#605e5c', 400, 'center');
+
+            // Formula Bar
+            ctx.fillStyle = '#fff'; ctx.fillRect(X, Y + 252, Wd, 54);
+            ctx.fillStyle = '#e1dfdd'; ctx.fillRect(X, Y + 305, Wd, 1.5);
+            rr(X + 10, Y + 260, 150, 38, 4); ctx.strokeStyle = '#c8c6c4'; ctx.lineWidth = 1.5; ctx.stroke();
+            ex(LET[ai] + actRow, X + 26, Y + 279, 23, '#201f1e');
+            ex('fx', X + 194, Y + 279, 25, '#605e5c', 500, 'left', 'ltr', true);
+            rr(X + 232, Y + 260, Wd - 242, 38, 4); ctx.strokeStyle = '#e1dfdd'; ctx.stroke();
+            ex(newTxt(an, ai), X + Wd - 28, Y + 279, 23, '#201f1e', 400, 'right', ai === 1 || ai === 4 ? 'ltr' : 'rtl');
+
+            // Header Row
+            const CH = Y + 306;
+            ctx.fillStyle = '#efefef'; ctx.fillRect(X, CH, Wd, 44);
+            COLS.forEach((cc, i) => {
+                const on = i === ai;
+                if (on) { ctx.fillStyle = '#d3e6da'; ctx.fillRect(colL[i], CH, cc.w, 44); ctx.fillStyle = '#217346'; ctx.fillRect(colL[i], CH + 40, cc.w, 4); }
+                ex(LET[i], colL[i] + cc.w / 2, CH + 22, 22, on ? '#217346' : '#605e5c', on ? 700 : 400, 'center');
+            });
+
+            ctx.fillStyle = '#efefef'; ctx.fillRect(GR, CH, RHW, 44);
+            ctx.beginPath(); ctx.moveTo(GR + 46, CH + 34); ctx.lineTo(GR + 46, CH + 14); ctx.lineTo(GR + 26, CH + 34); ctx.closePath(); ctx.fillStyle = '#b9b9b9'; ctx.fill();
+            ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X, CH + 44); ctx.lineTo(X + Wd, CH + 44); ctx.stroke();
+            colL.forEach(x => { ctx.beginPath(); ctx.moveTo(x, CH); ctx.lineTo(x, CH + 44); ctx.stroke(); });
+            ctx.beginPath(); ctx.moveTo(GR, CH); ctx.lineTo(GR, CH + 44); ctx.stroke();
+
+            // Grid Rows
+            for (let r = 1; r <= NR; r++) {
+                const y = TOP + (r - 1) * RH;
+                let data = null, nr = null;
+                if (r >= 2 && r <= 11) data = ROWS[r - 2];
+                else if (r >= FIRST_NEW && r < FIRST_NEW + NEWROWS.length) { nr = NEWROWS[r - FIRST_NEW]; }
+
+                COLS.forEach((cc, i) => {
+                    const x = colL[i];
+                    let fill = '#fff', txtVal = '', col = '#201f1e';
+                    if (r === 1) { fill = '#217346'; txtVal = cc.h; col = '#fff'; }
+                    else if (data) { fill = r % 2 === 0 ? '#eef5ea' : '#fff'; txtVal = data[i]; }
+                    else if (nr) { txtVal = newTxt(nr, i); fill = txtVal ? (r % 2 === 0 ? '#eef5ea' : '#fff') : '#fff'; }
+
+                    ctx.fillStyle = fill; ctx.fillRect(x, y, cc.w, RH);
+
+                    if (r > 1 && i === 5 && txtVal && STY[txtVal]) {
+                        ctx.fillStyle = STY[txtVal][0]; ctx.fillRect(x, y, cc.w, RH); col = STY[txtVal][1];
+                    }
+                    if (!txtVal) return;
+
+                    const mid = y + RH / 2 + 1;
+                    if (r > 1 && i === 5) ex(txtVal, x + cc.w / 2, mid, 25, col, 600, 'center', 'rtl');
+                    else if (i === 1 || i === 4) ex(txtVal, colR[i] - 16, mid, 25, col, r === 1 ? 700 : 400, 'right', r === 1 ? 'rtl' : 'ltr');
+                    else ex(txtVal, colR[i] - 16, mid, 25, col, r === 1 ? 700 : 400, 'right', 'rtl');
+                });
+            }
+
+            COLS.forEach((cc, i) => {
+                const bx = colL[i] + 10, by = TOP + (RH - 32) / 2;
+                rr(bx, by, 32, 32, 4); ctx.fillStyle = '#f6f6f6'; ctx.fill(); ctx.strokeStyle = '#8fb89f'; ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(bx + 9, by + 13); ctx.lineTo(bx + 23, by + 13); ctx.lineTo(bx + 16, by + 22); ctx.closePath(); ctx.fillStyle = '#444'; ctx.fill();
+            });
+
+            NEWROWS.forEach((nr, k) => {
+                const done = nr.times[5] + nr.dur;
+                if (t >= done) {
+                    const fl = 0.18 * (1 - sc(t, done, done + 0.9));
+                    if (fl > 0) { ctx.fillStyle = `rgba(33,115,70,${fl})`; ctx.fillRect(X, TOP + (FIRST_NEW - 1 + k) * RH, GR - X, RH); }
+                }
+            });
+
+            ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.lineWidth = 1.5;
+            for (let r = 0; r <= NR; r++) { const y = TOP + r * RH; ctx.beginPath(); ctx.moveTo(X, y); ctx.lineTo(GR, y); ctx.stroke(); }
+            colL.forEach(x => { ctx.beginPath(); ctx.moveTo(x, TOP); ctx.lineTo(x, TOP + NR * RH); ctx.stroke(); });
+
+            for (let r = 1; r <= NR; r++) {
+                const y = TOP + (r - 1) * RH, on = r === actRow;
+                ctx.fillStyle = on ? '#d3e6da' : '#efefef'; ctx.fillRect(GR, y, RHW, RH);
+                if (on) { ctx.fillStyle = '#217346'; ctx.fillRect(GR + RHW - 4, y, 4, RH); }
+                ex(String(r), GR + RHW / 2, y + RH / 2 + 1, 22, on ? '#217346' : '#605e5c', on ? 700 : 400, 'center');
+                ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(GR, y + RH); ctx.lineTo(GR + RHW, y + RH); ctx.stroke();
+            }
+            ctx.strokeStyle = '#d0d0d0'; ctx.beginPath(); ctx.moveTo(GR, TOP); ctx.lineTo(GR, TOP + NR * RH); ctx.stroke();
+
+            // Active Cell Highlight
+            {
+                const ax = colL[ai], ay = TOP + (actRow - 1) * RH, aw = COLS[ai].w;
+                rr(ax + 1, ay + 1, aw - 2, RH - 2, 0); ctx.strokeStyle = '#217346'; ctx.lineWidth = 4; ctx.stroke();
+                ctx.fillStyle = '#217346'; ctx.fillRect(ax - 6, ay + RH - 6, 12, 12);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(ax - 6, ay + RH - 6, 12, 12);
+                if (editing) {
+                    const v = newTxt(an, ai);
+                    ctx.font = '400 25px "Segoe UI",Calibri,"Readex Pro",sans-serif';
+                    const w1 = v ? ctx.measureText(v).width : 0;
+                    if (Math.floor(t * 6) % 2 === 0) { ctx.fillStyle = '#201f1e'; ctx.fillRect(colR[ai] - 16 - w1 - 4, ay + 14, 2, RH - 28); }
+                }
+            }
+
+            const SB = TOP + NR * RH;
+            ctx.fillStyle = '#f3f3f3'; ctx.fillRect(X, SB, Wd, Y + Hh - SB);
+            ctx.fillStyle = '#d0d0d0'; ctx.fillRect(X, SB, Wd, 1.5);
+            ctx.fillStyle = '#8a8886';
+            ctx.beginPath(); ctx.moveTo(X + 30, SB + 16); ctx.lineTo(X + 18, SB + 26); ctx.lineTo(X + 30, SB + 36); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(X + 44, SB + 16); ctx.lineTo(X + 56, SB + 26); ctx.lineTo(X + 44, SB + 36); ctx.fill();
+            rr(X + 84, SB, 150, 48, [0, 0, 8, 8]); ctx.fillStyle = '#fff'; ctx.fill(); ctx.fillStyle = '#217346'; ctx.fillRect(X + 84, SB + 44, 150, 4);
+            ex('العملاء', X + 159, SB + 23, 22, '#217346', 700, 'center', 'rtl');
+            ex('الطلبات', X + 290, SB + 23, 22, '#605e5c', 400, 'center', 'rtl');
+            ctx.beginPath(); ctx.arc(X + 376, SB + 24, 17, 0, Math.PI * 2); ctx.strokeStyle = '#8a8886'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(X + 368, SB + 24); ctx.lineTo(X + 384, SB + 24); ctx.moveTo(X + 376, SB + 16); ctx.lineTo(X + 376, SB + 32); ctx.stroke();
+
+            const SS = SB + 52;
+            ctx.fillStyle = '#e9e9e9'; ctx.fillRect(X, SS, Wd, Y + Hh - SS);
+            ex(editing ? 'Enter' : 'Ready', X + 22, SS + 20, 20, '#323130', 400);
+            ctx.strokeStyle = '#8a8886'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X + Wd - 360, SS + 20); ctx.lineTo(X + Wd - 150, SS + 20); ctx.stroke();
+            ctx.fillStyle = '#605e5c'; ctx.fillRect(X + Wd - 256, SS + 11, 4, 18);
+            ex('−', X + Wd - 376, SS + 19, 24, '#605e5c', 400, 'center');
+            ex('+', X + Wd - 132, SS + 19, 24, '#605e5c', 400, 'center');
+            ex('100%', X + Wd - 22, SS + 20, 20, '#323130', 400, 'right');
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 6. PRICING PLANS MODULE
+        // =========================================================================
+        const PLANS = [
+            { id: 'free', bg: ['#ffffff', '#ffffff'], bd: '#e7e5e4', fg: INK, tag: 'تجربة مجانية', tagBg: '#f5f5f4', tagFg: SEC, title: 'الباقة التجريبية (Free)', sub: 'لتجربة واختبار المنصة', m: 0, y: 0, feat: ['2 فتحات ربط قنوات', '100 محادثة شهرياً', 'دعم ملفات المتجر الأساسي'], btn: 'الباقة الحالية' },
+            { id: 'starter', bg: ['#effce9', '#e1f7d5'], bd: '#b4f0a0', fg: '#143823', tag: '1. للمتاجر والمشاريع الناشئة', tagBg: '#d7f5c5', tagFg: '#143823', title: 'باقة البداية (Starter)', sub: 'أتمتة قناة تواصل واحدة', m: 450, y: 360, feat: ['ربط قناة واحدة (واتساب أو إنستغرام)', '1,000 محادثة بيعية شهرياً', 'تدوين الطلبات في جدول الـ CRM', 'دعم فني ومساعدة في الإعداد'], btn: 'ترقية للبداية', btnBg: '#143823' },
+            { id: 'growth', bg: ['#fff2eb', '#ffe3d4'], bd: '#ffc2a6', fg: '#661800', tag: '2. الأنشطة النشطة إعلانياً', tagBg: '#ffd4be', tagFg: '#661800', title: 'باقة النمو (Growth)', sub: 'تحويل المعلقين إلى مشترين', m: 850, y: 680, feat: ['ربط قناتين (واتساب + إنستغرام)', '4,000 محادثة ذكية شهرياً', 'أتمتة تعليقات المنشورات والـ DMs', 'تفريغ فوري في الـ CRM و Calendar'], btn: 'ترقية للنمو', btnBg: '#661800' },
+            { id: 'pro', bg: ['#f7edff', '#ecdaff'], bd: '#dcb3ff', fg: '#3d065f', tag: '3. الأكثر طلباً', tagBg: '#e0baff', tagFg: '#3d065f', title: 'الباقة الاحترافية (Pro)', sub: 'للأنشطة والشركات المتوسعة', m: 1400, y: 1120, feat: ['قنوات كاملة (واتساب، إنستغرام، فيسبوك)', 'محادثات بيعية غير محدودة', 'تدريب الوكيل على ملفات وقوائم الأسعار', 'تكامل كامل مع حزمة Google Workspace', 'أولوية دعم فني وتخصيص مستمر'], btn: 'الترقية للاحترافية', btnBg: '#3d065f', thick: true },
+            { id: 'scale', bg: ['#eef5ff', '#dbe8ff'], bd: '#b8d2ff', fg: '#190066', tag: '4. الفروع والشركات الكبيرة', tagBg: '#c8dcff', tagFg: '#190066', title: 'باقة الشركات (Scale)', sub: 'للأنشطة ذات الفروع المتعددة', m: 2800, y: 2240, feat: ['قنوات وأرقام غير محدودة', 'معالجة فائقة السرعة Ultra Latency', 'ربط الـ Webhooks البرمجية الخاصة', 'شروط تحكم وأمان مبيعات مخصصة'], btn: 'ترقية للشركات', btnBg: '#190066' }
+        ];
+
+        const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const PR_SHOW = ['starter', 'growth', 'pro', 'scale'];
+
+        function planRow(p, y) {
+            const h = 330;
+            ctx.save(); ctx.shadowColor = 'rgba(28,25,23,.12)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
+            const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, p.bg[0]); g.addColorStop(1, p.bg[1]);
+            rr(32, y, 1016, h, 48); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+            rr(32, y, 1016, h, 48); ctx.strokeStyle = p.bd; ctx.lineWidth = p.thick ? 6 : 4; ctx.stroke();
+            const tag = p.tag.replace(/^\d+\.\s*/, '');
+            ctx.font = '800 27px "Readex Pro"';
+            const tw = ctx.measureText(tag).width + 44;
+            rr(1008 - tw, y + 30, tw, 44, 22); ctx.fillStyle = p.tagBg; ctx.fill();
+            tx(tag, 1008 - tw / 2, y + 53, 27, p.tagFg, 800, 'center');
+            tx(p.title, 1008, y + 120, 44, p.fg, 800, 'right');
+            ctx.save(); ctx.globalAlpha *= 0.85; tx(p.sub, 1008, y + 170, 30, p.fg, 400, 'right'); ctx.restore();
+            p.feat.slice(0, 2).forEach((f, i) => {
+                const fy = y + 232 + i * 50; icon('cck', 988, fy, 36);
+                let fs = 29; ctx.font = `600 ${fs}px "Readex Pro"`;
+                while (ctx.measureText(f).width > 560 && fs > 22) { fs--; ctx.font = `600 ${fs}px "Readex Pro"`; }
+                tx(f, 958, fy + 1, fs, p.fg, 600, 'right');
+            });
+            ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.fillRect(386, y + 34, 2.7, h - 68);
+            ctx.direction = 'ltr'; tx(fmt(p.m), 210, y + 110, 78, p.fg, 800, 'center', 'J'); ctx.direction = 'rtl';
+            tx('ج.م / شهرياً', 210, y + 178, 30, p.fg, 600, 'center');
+            rr(70, y + 218, 280, 70, 35); ctx.fillStyle = p.btnBg; ctx.fill();
+            tx(p.btn, 210, y + 254, 27, '#fff', 700, 'center');
+        }
+
+        function pricingScreen(t, T0) {
+            ctx.fillStyle = WS; ctx.fillRect(0, 0, W, H);
+            const T1 = T0 + 1.2, N = PR_SHOW.length;
+            const lerp = (a, b, k) => a + (b - a) * k, ib = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+            const he = eo(sc(t, T1 + 0.1, T1 + 0.8));
+            ctx.save(); ctx.globalAlpha *= he; ctx.translate(0, (1 - he) * -40);
+            tx('خطط الأسعار', W / 2, 140, 60, INK, 800);
+            tx('اختر الخطة المناسبة لحجم أعمالك', W / 2, 214, 32, SEC, 400);
+            ctx.restore();
+            const sw = sc(t, T1 + 1.5, T1 + 2.5);
+            for (let i = N - 1; i >= 0; i--) {
+                const p = PLANS.find(q => q.id === PR_SHOW[i]), a = sc(t, T0 + i * 0.05, T0 + 0.6 + i * 0.05);
+                if (a <= 0) continue;
+                const bk = 1 + 2.70158 * Math.pow(a - 1, 3) + 1.70158 * Math.pow(a - 1, 2);
+                const d = ib(sc(t, T1 + i * 0.09, T1 + 0.85 + i * 0.09));
+                const yc = 960 - 165 + (i - (N - 1) / 2) * 30, yr = 300 + i * 350;
+                const y = lerp(yc, yr, d), rot = lerp((i - (N - 1) / 2) * 0.05, 0, d), s = lerp(0.86 * (0.7 + 0.3 * bk), 1, d);
+                ctx.save();
+                ctx.globalAlpha *= eo(a);
+                ctx.translate(W / 2, y + 165); ctx.rotate(rot); ctx.scale(s, s); ctx.translate(-W / 2, -(y + 165));
+                planRow(p, y);
+                if (sw > 0 && sw < 1) {
+                    ctx.save(); rr(32, y, 1016, 330, 48); ctx.clip(); ctx.transform(1, 0, -0.3, 1, 0, 0);
+                    const x = -300 + sw * 1800 + 0.3 * y, g = ctx.createLinearGradient(x, 0, x + 260, 0);
+                    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = g; ctx.fillRect(x, y - 10, 260, 350); ctx.restore();
+                }
+                if (p.thick && t > T1 + 2.0) {
+                    const gl = 0.5 + 0.5 * Math.sin((t - T1 - 2.0) * 4);
+                    rr(24, y - 8, 1032, 346, 56); ctx.strokeStyle = `rgba(166,90,255,${0.15 + 0.3 * gl})`; ctx.lineWidth = 7; ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        function overlayPill(a, text) {
+            ctx.save();
+            ctx.globalAlpha = a;
+            rr(90, 1700, 900, 134, 67);
+            ctx.fillStyle = INK;
+            ctx.fill();
+            tx(text, W / 2, 1769, 54, '#fff', 700);
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 7. PHONE STAGE (الهواتف المتزامنة بالمللي ثانية مع مقطع الصوت)
+        // =========================================================================
+        const PHS = 0.62, BZ = 15, PW = W * PHS + 2 * BZ, PH = H * PHS + 2 * BZ, PB = 1868;
+
+        function excelFull(tc) {
+            ctx.save();
+            excel(tc);
+            const ti = eo(sc(tc, 3.5, 3.9)) * (1 - sc(tc, 5.8, 6.2));
+            if (ti > 0) {
+                ctx.save();
+                ctx.globalAlpha = ti;
+                ctx.translate(0, (1 - ti) * 40);
+                card(110, 1650, 860, 134, 46);
+                ctx.beginPath();
+                ctx.arc(200, 1717, 34, 0, Math.PI * 2);
+                ctx.fillStyle = '#217346';
+                ctx.fill();
+                icon('chk', 200, 1717, 36);
+                tx('اتضاف عميل جديد في ملف Excel', 610, 1693, 40, INK, 700, 'center');
+                tx('Bedaya_CRM.xlsx  •  الصف 12', 610, 1746, 27, MUT, 500, 'center', 'J');
+                ctx.restore();
+            }
+            const tg = eo(sc(tc, 8.5, 9.0));
+            if (tg > 0) {
+                ctx.save();
+                ctx.globalAlpha = tg;
+                ctx.translate(0, (1 - tg) * 40);
+                rr(90, 1650, 900, 134, 67);
+                ctx.fillStyle = INK;
+                ctx.fill();
+                tx('يرد ويسجّل.. وانت نايم', W / 2, 1719, 58, '#fff', 700);
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+        const PHONES = [
+            { E: 8.8,  draw: t => chatScreen(cl(t - 8.8, 0, 11.2)) },
+            { E: 20.0, draw: t => excelFull(cl(t - 20.0, 0, 11.0)), noIsland: true },
+            { E: 31.0, draw: t => messengerScreen(cl(t - 31.0, 0, 6.8)) },
+            { E: 37.8, draw: t => tiktokScreen(cl(t - 37.8, 0, 4.2)) },
+            { E: 42.0, draw: t => instagramScreen(cl(t - 42.0, 0, 8.8)) }
+        ];
+
+        const TITLES = [
+            [8.8,  'يرد على عملائك فورًا', 'واتساب — بدون أي تدخل منك'],
+            [20.0, 'ويسجّل كل طلب في الـ CRM', 'عميل جديد يتضاف لحظيًا'],
+            [31.0, 'وماسنجر كمان', 'نفس الرد الذكي على فيسبوك'],
+            [37.8, 'وتيك توك', 'يرد على رسائل الـ DM'],
+            [42.0, 'وإنستجرام', 'ويكمّل الطلب بنفس الذكاء'],
+            [46.0, 'كل المنصات.. رد واحد ذكي', 'محادثات وعملاء في مكان واحد']
+        ];
+        const TICONS = ['wa', 'receipt', 'fb', 'tt', 'ig'];
+
+        function drawPhone(p, idx, t) {
+            const e = sc(t, p.E, p.E + 0.85);
+            if (e <= 0) return;
+            const bk = 1 + 2.70158 * Math.pow(e - 1, 3) + 1.70158 * Math.pow(e - 1, 2);
+            let kf = 0;
+            PHONES.forEach((q, j) => { if (j > idx) kf += eo(sc(t, q.E, q.E + 0.8)); });
+            const dy = -(kf <= 1 ? kf * 92 : 92 + (kf - 1) * 52), sk = 1 - 0.075 * kf;
+            const rot = (idx % 2 ? 1 : -1) * 0.04 * Math.min(kf, 1) + (1 - Math.min(bk, 1)) * 0.07;
+            ctx.save();
+            ctx.translate(W / 2, PB + (1 - bk) * 1500 + dy);
+            ctx.rotate(rot); ctx.scale(sk, sk); ctx.translate(-PW / 2, -PH);
+            ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 22;
+            rr(0, 0, PW, PH, 88); ctx.fillStyle = '#0e0e10'; ctx.fill(); ctx.restore();
+            rr(3, 3, PW - 6, PH - 6, 85); ctx.strokeStyle = '#3a3a3f'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = '#2a2a2e'; ctx.fillRect(-5, 210, 5, 70); ctx.fillRect(-5, 310, 5, 110); ctx.fillRect(PW, 280, 5, 150);
+            ctx.save();
+            ctx.translate(BZ, BZ); ctx.scale(PHS, PHS);
+            rr(0, 0, W, H, (88 - BZ) / PHS); ctx.clip();
+            p.draw(t);
+            ctx.globalAlpha = 1;
+            if (!p.noIsland) { rr(540 - 105, 16, 210, 54, 27); ctx.fillStyle = '#000'; ctx.fill(); }
+            ctx.restore();
+            const dim = Math.min(0.6, 0.2 * kf);
+            if (dim > 0) { rr(0, 0, PW, PH, 88); ctx.fillStyle = `rgba(245,245,244,${dim})`; ctx.fill(); }
+            ctx.restore();
+        }
+
+        function phoneStage(t) {
+            ctx.fillStyle = WS; ctx.fillRect(0, 0, W, H);
+            TITLES.forEach((T, i) => {
+                const nx = TITLES[i + 1], a = eo(sc(t, T[0] + 0.2, T[0] + 0.75)) * (nx ? 1 - sc(t, nx[0] + 0.1, nx[0] + 0.35) : 1);
+                if (a <= 0) return;
+                ctx.save(); ctx.globalAlpha *= a; ctx.translate(0, (1 - a) * 36);
+                tx(T[1], W / 2, 150, 70, INK, 800);
+                tx(T[2], W / 2, 240, 37, SEC, 400);
+                ctx.restore();
+            });
+            const cur = TITLES.filter(T => t >= T[0] + 0.2).length - 1;
+            TICONS.forEach((k, i) => {
+                const on = cur >= 5 || i <= cur, act = i === cur;
+                ctx.save(); ctx.globalAlpha *= on ? 1 : 0.25;
+                icon(k, W / 2 + (i - 2) * 120, 330, act ? 72 : 58); ctx.restore();
+            });
+            PHONES.forEach((p, i) => drawPhone(p, i, t));
+        }
+
+        // =========================================================================
+        // 8. MASTER SCENE TIMELINE CONTROLLER (drawSceneAtTime)
+        // =========================================================================
+        export async function prepareIdentity() {
+            logToConsole("بدء جلب ملف الصوت عبر jsDelivr وتحميل الأصول والخطوط...", "info");
+            
+            // 1. تحميل الخطوط
+            await Promise.allSettled([
+                document.fonts.load('400 40px "Readex Pro"'),
+                document.fonts.load('600 40px "Readex Pro"'),
+                document.fonts.load('700 40px "Readex Pro"'),
+                document.fonts.load('800 40px "Readex Pro"'),
+                document.fonts.load('700 40px "Plus Jakarta Sans"')
+            ]);
+
+            // 2. تحميل الأيقونات
+            await Promise.allSettled(Object.keys(SRC).map(loadIcon));
+
+            // 3. جلب ملف الصوت وفك تشفيره (عبر jsDelivr CDN مع بديل مباشر)
+            const AUDIO_URLS = [
+                'https://cdn.jsdelivr.net/gh/mu7ammadriyad/Islam-agent@main/Assets/Generated%20Audio%20September%2030%2C%202026%20-%2011_58PM.wav',
+                'https://raw.githubusercontent.com/mu7ammadriyad/Islam-agent/main/Assets/Generated%20Audio%20September%2030%2C%202026%20-%2011_58PM.wav'
+            ];
+
+            for (const url of AUDIO_URLS) {
+                try {
+                    audioBuffer = await fetchAndDecodeAudio(url);
+                    logToConsole("تم جلب وفك تشفير الصوت الأساسي بنجاح ✓", "info");
+                    break;
+                } catch (err) {
+                    logToConsole("تنبيه جلب الصوت: " + err.message, "warn");
+                }
+            }
+        }
+
+        export async function drawSceneAtTime(t) {
+            ctx.direction = 'rtl';
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = WS;
+            ctx.fillRect(0, 0, W, H);
+
+            // A — الهوك الليلي (0.0s إلى 9.2s)
+            const aA = 1 - sc(t, 8.8, 9.2);
+            if (aA > 0) {
+                ctx.globalAlpha = aA;
+                tx('٣:١٢ ص', W / 2, 250, 170, INK, 700);
+                tx('الفجر.. والكل نايم', W / 2, 395, 44, MUT, 400);
+
+                const n = [
+                    ['wa', 'واتساب', 'السعر كام؟'],
+                    ['ig', 'إنستغرام', 'متاح النهاردة؟'],
+                    ['fb', 'فيسبوك ماسنجر', 'عايز أطلب دلوقتي'],
+                    ['tt', 'تيك توك', 'فين الرد؟']
+                ];
+
+                n.forEach((m, i) => {
+                    const p = eo(sc(t, 2.8 + i * 0.7, 3.3 + i * 0.7));
+                    if (p <= 0) return;
+                    const y = 520 + i * 190 + (1 - p) * -50;
+                    ctx.globalAlpha = aA * p;
+                    card(90, y, 900, 160, 34);
+                    icon(m[0], 915, y + 80, 78);
+                    tx(m[1], 850, y + 52, 30, MUT, 500, 'right');
+                    tx(m[2], 850, y + 106, 44, INK, 600, 'right');
+                    tx('الآن', 130, y + 52, 28, MUT, 400, 'left');
+                });
+
+                ctx.globalAlpha = aA * eo(sc(t, 6.0, 6.5));
+                rr(W / 2 - 200, 1330, 400, 74, 37);
+                ctx.fillStyle = INK;
+                ctx.fill();
+                tx('٤ رسائل بدون رد', W / 2, 1368, 32, '#fff', 600);
+
+                ctx.globalAlpha = aA * eo(sc(t, 6.6, 7.1));
+                tx('عميلك بيسأل.. وانت نايم؟', W / 2, 1560, 70, INK, 700);
+
+                ctx.globalAlpha = aA * eo(sc(t, 7.3, 7.8));
+                tx('كل رد متأخر = عميل راح للمنافس', W / 2, 1660, 42, SEC, 400);
+            }
+
+            // B إلى F — مسرح الهواتف المتزامنة (8.8s إلى 50.8s)
+            const aS = sc(t, 8.8, 9.2) * (1 - sc(t, 50.4, 50.8));
+            if (aS > 0) {
+                ctx.globalAlpha = aS;
+                phoneStage(t);
+            }
+
+            // G — خطط الأسعار (50.8s إلى 57.5s)
+            const aP = sc(t, 50.8, 51.3) * (1 - sc(t, 57.2, 57.5));
+            if (aP > 0) {
+                ctx.globalAlpha = aP;
+                pricingScreen(t, 50.8);
+                overlayPill(aP * eo(sc(t, 51.5, 52.0)) * (1 - sc(t, 53.6, 54.0)), 'باقات على قد شغلك');
+                overlayPill(aP * eo(sc(t, 54.2, 54.7)) * (1 - sc(t, 57.0, 57.3)), 'ابدأ النهاردة من 450 ج.م بس في الشهر');
+            }
+
+            // H — شاشة الدعوة للعمل والختام (57.5s إلى 65.0s)
+            const aD = sc(t, 57.5, 58.0);
+            if (aD > 0) {
+                ctx.globalAlpha = aD;
+                logo(W / 2, 520, 300);
+                tx('جرّب مجانًا', W / 2, 860, 96, INK, 700);
+
+                const pu = 1 + 0.025 * Math.sin(t * 8);
+                ctx.save();
+                ctx.translate(W / 2, 1070);
+                ctx.scale(pu, pu);
+                rr(-400, -75, 800, 150, 75);
+                ctx.fillStyle = INK;
+                ctx.fill();
+                ctx.direction = 'ltr';
+                tx('bedaya.web.app', 0, 4, 66, '#fff', 700, 'center', 'J');
+                ctx.restore();
+                ctx.direction = 'rtl';
+
+                ['wa', 'ig', 'fb', 'tt', 'tg'].forEach((k, i) => {
+                    const p = eo(sc(t, 58.5 + i * 0.1, 59.0 + i * 0.1));
+                    ctx.globalAlpha = aD * p;
+                    const x = W / 2 + (i - 2) * 170;
+                    const y = 1330;
+                    card(x - 65, y - 65, 130, 130, 36);
+                    icon(k, x, y, 70);
+                });
+
+                ctx.globalAlpha = aD * eo(sc(t, 59.8, 60.5));
+                tx('بدون بطاقة ائتمان  •  جاهز في ٥ دقائق', W / 2, 1530, 38, SEC, 400);
+            }
+        }
+
+        // =========================================================================
+        // 9. FIXED TECHNICAL RUNTIME LAYER (Ofoq Engine Harness)
+        // =========================================================================
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            state.isRendering = true;
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة مع الصوت...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                    logToConsole("تم تجهيز الصوت للمعاينة والتصدير بنجاح ✓", "info");
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
