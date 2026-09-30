@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بداية — إعلان 50 ثانية (نسخة الإنتاج)</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'Readex Pro', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f4;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // =========================================================================
+        // 1. CONFIG & IDENTITY CONTRACT
+        // =========================================================================
+        export const CONFIG = {
+            fps: 30,
+            width: 1080,
+            height: 1920,
+            duration: 50.0
+        };
+        export const OUTPUT_FILENAME = "bedaya_ad_50s";
+        export let audioBuffer = null;
+
+        const W = CONFIG.width;
+        const H = CONFIG.height;
+
+        // الهوية اللونية لمنصة بداية
+        const INK = '#1c1917';
+        const SEC = '#57534e';
+        const MUT = '#8c857f';
+        const BR  = '#e7e5e4';
+        const SOFT = '#f0eeeb';
+        const WS  = '#f5f5f4';
+
+        const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+        const sc = (t, a, b) => cl((t - a) / (b - a));
+        const eo = x => 1 - Math.pow(1 - x, 3);
+        const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+
+        function tx(s, x, y, size, col, w = 600, al = 'center', fam = 'R') {
+            ctx.font = `${w} ${size}px ${fam === 'J' ? '"Plus Jakarta Sans","Readex Pro"' : '"Readex Pro"'}, sans-serif`;
+            ctx.fillStyle = col;
+            ctx.textAlign = al;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s, x, y);
+        }
+
+        function ex(s, x, y, size, col, w = 400, al = 'left', dir = 'ltr', it = false) {
+            ctx.direction = dir;
+            ctx.font = `${it ? 'italic ' : ''}${w} ${size}px "Segoe UI", Calibri, "Readex Pro", Arial, sans-serif`;
+            ctx.fillStyle = col;
+            ctx.textAlign = al;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s, x, y);
+            ctx.direction = 'rtl';
+        }
+
+        // شعار بداية المتجهي الدقيق
+        const LP1 = new Path2D("m88.7 8.6c-4.5-4.1-9.7-6.6-17.1-7.5h-41.1c-6.5 0-12.5 1.6-17.3 5.5s-11.1 10.3-11.1 21.4v25.3c0 9.7 4.9 18.7 13.4 24.7l-3.1 12.3c-0.5 2.5 2.1 4.4 4.2 3.2l19.7-10.2h32.7c13.9 0 29-11.9 29-29.6v-25.5c-0.2-7.2-3.6-14.7-9.3-19.6zm4.1 44.2c0 13.1-9.8 24.9-24.4 24.9h-32.8c-0.5 0-0.9 0.2-1.3 0.4l-15.1 7.9 2.2-8.1c0.4-1.7-0.4-2.9-1.3-3.4-2.4-1.2-4.3-2.9-6.1-4.8-3.6-4.1-6-9.8-6.8-16.4v-24.7c0-11.7 10.4-22.1 21.4-22.1h42.5c10.6 0 21.7 9 21.7 22.3z");
+        const LP2 = new Path2D("m67.7 51c-1.1 1.1-7.3 5.9-16.7 6.3s-15.9-4.4-17.8-6c-1.3-1.3-3-1.5-4.3-0.3-1.1 1.1-1.3 3.1 0.4 4.2 4.5 3.5 10.5 7.2 20.6 7.2 7.3 0 13.8-2.2 18.2-5.1 3.3-2.3 4-2.8 4-4.4 0-1.9-2.1-3.5-4.2-2.1z");
+        
+        function logo(cx, cy, size, col = INK) {
+            ctx.save();
+            ctx.translate(cx - size / 2, cy - size * 0.475);
+            ctx.scale(size / 100, size / 100);
+            ctx.fillStyle = col;
+            ctx.strokeStyle = col;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.fill(LP1);
+            ctx.lineWidth = 2.7;
+            ctx.stroke(LP1);
+            ctx.fill(LP2);
+            ctx.lineWidth = 2;
+            ctx.stroke(LP2);
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 2. ICONS ENGINE (Iconify via Memory Blobs)
+        // =========================================================================
+        const API = 'https://api.iconify.design/';
+        const SRC = {
+            wa: 'logos/whatsapp-icon', fb: 'logos/facebook', ig: 'skill-icons/instagram', tt: 'logos/tiktok-icon', tg: 'logos/telegram',
+            chk: 'tabler/check?color=%23ffffff',
+            truck: 'tabler/truck-delivery?color=%231d4ed8', cart: 'tabler/shopping-cart-check?color=%23143823',
+            rot: 'tabler/rotate-2?color=%23c2410c', card: 'tabler/credit-card?color=%237e22ce',
+            mplus: 'tabler/message-plus?color=%238c857f', mplusK: 'tabler/message-plus?color=%231c1917',
+            pc: 'tabler/paperclip?color=%238c857f', fwd: 'tabler/arrow-forward?color=%23ffffff',
+            copy: 'tabler/copy?color=%238c857f', rcw: 'tabler/rotate-clockwise?color=%238c857f',
+            social: 'tabler/social?color=%231c1917', refresh: 'tabler/refresh?color=%231c1917', plug: 'tabler/plug?color=%238c857f',
+            bolt2: 'tabler/bolt?color=%238c857f', msgbot: 'tabler/message-chatbot?color=%231c1917', msgs: 'tabler/messages?color=%231c1917',
+            ushare: 'tabler/user-share?color=%231c1917', clist: 'tabler/clipboard-list?color=%231c1917',
+            unlink: 'tabler/unlink?color=%23dc2626', okg: 'tabler/check?color=%23143823', link: 'tabler/link?color=%23ffffff',
+            gm: 'logos/google-gmail', receipt: 'tabler/receipt-2?color=%231c1917', cck: 'tabler/circle-check?color=%231c1917',
+            ckk: 'tabler/check?color=%231c1917',
+            gem: 'logos/google-gemini', oai: 'logos/openai-icon', cla: 'logos/claude-icon', meta: 'logos/meta-icon'
+        };
+        const IMG = {};
+
+        function loadIcon(k) {
+            const u = API + SRC[k].replace(/^([^?]+)(\?(.*))?$/, (m, p, q, qq) => p + '.svg?height=256' + (qq ? '&' + qq : ''));
+            return fetch(u).then(r => r.text()).then(s => new Promise(res => {
+                const im = new Image();
+                im.onload = () => { IMG[k] = im; res(); };
+                im.onerror = res;
+                im.src = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
+            })).catch(() => {});
+        }
+
+        function icon(k, cx, cy, size) {
+            const im = IMG[k];
+            if (!im) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2);
+                ctx.fillStyle = BR;
+                ctx.fill();
+                return;
+            }
+            const r = (im.naturalWidth || 1) / (im.naturalHeight || 1);
+            const w = r >= 1 ? size : size * r;
+            const h = r >= 1 ? size / r : size;
+            ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+        }
+
+        function card(x, y, w, h, r = 32) {
+            ctx.save();
+            ctx.shadowColor = 'rgba(28,25,23,.09)';
+            ctx.shadowBlur = 50;
+            ctx.shadowOffsetY = 16;
+            rr(x, y, w, h, r);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.restore();
+            rr(x, y, w, h, r);
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // =========================================================================
+        // 3. FULL-SCREEN CHAT MODULE
+        // =========================================================================
+        const TYPED = [
+            { text: 'السعر كام لو سمحت؟', a: 6.0, b: 6.7, send: 7.0 },
+            { text: 'أيوه احجزلي', a: 9.2, b: 9.7, send: 10.0 },
+            { text: 'أحمد سامي - 0109 481 2236', a: 11.8, b: 12.6, send: 12.9 }
+        ];
+        const MSGS = [
+            { k: 'u', t: 7.0, text: 'السعر كام لو سمحت؟' },
+            { k: 'a', ty: 7.35, t0: 7.85, text: 'أهلاً بيك! باقة النمو بـ 850 ج.م في الشهر.. تحب أحجزلك؟' },
+            { k: 'u', t: 10.0, text: 'أيوه احجزلي' },
+            { k: 'a', ty: 10.3, t0: 10.7, text: 'تمام! ابعتلي اسمك ورقم موبايلك' },
+            { k: 'u', t: 12.9, text: 'أحمد سامي - 0109 481 2236' },
+            { k: 'a', ty: 13.2, t0: 13.6, text: 'تم تسجيل طلبك بنجاح!\nوهتلاقي بياناتك في جدول العملاء دلوقتي.' }
+        ];
+        const STARTERS = [
+            { ic: 'truck', bg: '#ebf3ff', t: 'مصاريف ومدة التوصيل', d: 'فحص تسعير المحافظات وسرعة تسليم الشحنات' },
+            { ic: 'cart', bg: '#ebfcd2', t: 'تسجيل وحجز طلب جديد', d: 'اختبار التقاط بيانات العميل وتفريغها في الـ CRM' },
+            { ic: 'rot', bg: '#ffeee6', t: 'سياسة الاستبدال والضمان', d: 'التأكد من التزام الوكيل بمدد وشروط المتجر' },
+            { ic: 'card', bg: '#f7ebff', t: 'طرق الدفع والتحويل', d: 'فودافون كاش، InstaPay، والدفع عند الاستلام' }
+        ];
+
+        function wrap(text, maxW, font) {
+            ctx.font = font;
+            const outArr = [];
+            text.split('\n').forEach(par => {
+                let line = '';
+                par.split(' ').forEach(w => {
+                    const test = line ? line + ' ' + w : w;
+                    if (line && ctx.measureText(test).width > maxW) {
+                        outArr.push(line);
+                        line = w;
+                    } else line = test;
+                });
+                outArr.push(line);
+            });
+            return outArr;
+        }
+
+        function typingRow(t, y) {
+            logo(1008, y + 45, 81);
+            rr(789, y, 146, 68, 34);
+            ctx.fillStyle = '#fafaf9';
+            ctx.fill();
+            ctx.strokeStyle = '#f0eeeb';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            for (let i = 0; i < 3; i++) {
+                const p = (((t / 1.1 - i * 0.136) % 1) + 1) % 1;
+                const k = p < 0.3 ? p / 0.3 : p < 0.6 ? (0.6 - p) / 0.3 : 0;
+                ctx.beginPath();
+                ctx.arc(861 - i * 27, y + 34 - 11 * k, 7, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(140,133,127,${0.4 + 0.6 * k})`;
+                ctx.fill();
+            }
+        }
+
+        function chatScreen(t) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+
+            // شاشة الترحيب
+            const wa = 1 - sc(t, 7.0, 7.25);
+            if (wa > 0) {
+                ctx.save();
+                ctx.globalAlpha *= wa;
+                logo(540, 240, 130);
+                tx('جرّب ردود وكيلك على العملاء', 540, 360, 56, INK, 800);
+                wrap('تحدث معه كما سيتحدث عميلك الحقيقي، لاختبار فهمه للأسعار، سياسات الشحن، واستخراج بيانات الطلبات.', 900, '400 35px "Readex Pro"')
+                    .forEach((l, i) => tx(l, 540, 440 + i * 58, 35, SEC, 400));
+                STARTERS.forEach((s, i) => {
+                    const y = 600 + i * 198;
+                    rr(32, y, 1016, 172, 38);
+                    ctx.fillStyle = '#fff';
+                    ctx.fill();
+                    ctx.strokeStyle = BR;
+                    ctx.lineWidth = 2.7;
+                    ctx.stroke();
+                    rr(908, y + 36, 100, 100, 26);
+                    ctx.fillStyle = s.bg;
+                    ctx.fill();
+                    icon(s.ic, 958, y + 86, 54);
+                    tx(s.t, 878, y + 62, 36, INK, 700, 'right');
+                    icon('mplus', 82, y + 62, 40);
+                    tx(s.d, 878, y + 116, 30, MUT, 400, 'right');
+                });
+                ctx.restore();
+            }
+
+            // تتابع الرسائل
+            let y = 120;
+            MSGS.forEach(m => {
+                if (m.k === 'u') {
+                    if (t < m.t) return;
+                    const p = eo(sc(t, m.t, m.t + 0.2));
+                    ctx.font = '400 39px "Readex Pro"';
+                    const bw = ctx.measureText(m.text).width + 98;
+                    const bh = 128;
+                    ctx.save();
+                    ctx.globalAlpha *= p;
+                    ctx.translate(0, (1 - p) * 16);
+                    rr(32, y, bw, bh, [54, 54, 54, 11]);
+                    ctx.fillStyle = '#f0eeeb';
+                    ctx.fill();
+                    tx(m.text, 32 + bw / 2, y + bh / 2 + 2, 39, INK, 400);
+                    ctx.restore();
+                    y += bh + 54;
+                } else {
+                    if (t < m.ty) return;
+                    if (t < m.t0) {
+                        typingRow(t, y);
+                        y += 86 + 54;
+                        return;
+                    }
+                    const words = m.text.split(' ');
+                    const dur = 0.07 * words.length + 0.2;
+                    const n = Math.ceil(words.length * sc(t, m.t0, m.t0 + dur));
+                    const lines = wrap(words.slice(0, n).join(' '), 850, '400 40px "Readex Pro"');
+                    const acts = t >= m.t0 + dur + 0.1;
+                    const textH = lines.length * 72;
+                    const p = eo(sc(t, m.t0, m.t0 + 0.2));
+                    ctx.save();
+                    ctx.globalAlpha *= p;
+                    ctx.translate(0, (1 - p) * 16);
+                    logo(1008, y + 45, 81);
+                    lines.forEach((l, i) => tx(l, 935, y + 36 + i * 72, 40, INK, 400, 'right'));
+                    if (acts) {
+                        const ay = y + textH + 27 + 29;
+                        const pa = eo(sc(t, m.t0 + dur + 0.1, m.t0 + dur + 0.4));
+                        ctx.globalAlpha *= pa;
+                        icon('copy', 900, ay, 38);
+                        tx('نسخ', 870, ay + 1, 33, MUT, 400, 'right');
+                        tx('• تم الرد في ~0.6s', 767, ay + 1, 29, MUT, 400, 'right');
+                    }
+                    ctx.restore();
+                    y += Math.max(86, textH + (acts ? 85 : 0)) + 54;
+                }
+            });
+
+            // الفوتر العائم
+            const g = ctx.createLinearGradient(0, 1447, 0, H);
+            g.addColorStop(0, 'rgba(255,255,255,0)');
+            g.addColorStop(0.15, 'rgba(255,255,255,.7)');
+            g.addColorStop(0.42, 'rgba(255,255,255,.98)');
+            g.addColorStop(1, '#ffffff');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 1447, W, H - 1447);
+
+            ctx.font = '700 33px "Readex Pro"';
+            const nw = ctx.measureText('محادثة جديدة').width;
+            const pw = nw + 38 + 16 + 70;
+            const gw = pw + 22 + 76;
+            const gx = 540 + gw / 2;
+
+            rr(gx - pw, 1474, pw, 76, 38);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+            icon('mplusK', gx - 35 - 19, 1512, 38);
+            tx('محادثة جديدة', gx - 35 - 38 - 16, 1513, 33, INK, 700, 'right');
+
+            ctx.beginPath();
+            ctx.arc(gx - pw - 22 - 38, 1512, 38, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.stroke();
+            icon('rcw', gx - pw - 22 - 38, 1512, 40);
+
+            ctx.save();
+            ctx.shadowColor = 'rgba(28,25,23,.06)';
+            ctx.shadowBlur = 70;
+            ctx.shadowOffsetY = 16;
+            rr(32, 1572, 1016, 244, 54);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.restore();
+            rr(32, 1572, 1016, 244, 54);
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+
+            let cur = null;
+            TYPED.forEach(w => { if (t >= w.a - 0.3 && t < w.send) cur = w; });
+            if (cur) {
+                const shown = t < cur.a ? '' : cur.text.slice(0, Math.ceil(cur.text.length * sc(t, cur.a, cur.b)));
+                tx(shown, 1010, 1637, 39, INK, 400, 'right');
+                ctx.font = '400 39px "Readex Pro"';
+                const cw = shown ? ctx.measureText(shown).width : 0;
+                if (t < cur.b || Math.floor(t * 2.5) % 2 === 0) {
+                    ctx.fillStyle = INK;
+                    ctx.fillRect(1010 - cw - (shown ? 4 : 0), 1616, 3, 42);
+                }
+            } else {
+                tx('اسأل الوكيل أي شيء لاختبار دقته...', 1010, 1637, 39, MUT, 300, 'right');
+            }
+
+            icon('pc', 967, 1748, 50);
+
+            let press = 0;
+            TYPED.forEach(w => { if (Math.abs(t - w.send) < 0.14) press = 1 - Math.abs(t - w.send) / 0.14; });
+            ctx.save();
+            ctx.translate(116, 1748);
+            ctx.scale(1 - 0.1 * press, 1 - 0.1 * press);
+            ctx.beginPath();
+            ctx.arc(0, 0, 46, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(28,25,23,${1 - 0.12 * press})`;
+            ctx.fill();
+            icon('fwd', 0, 0, 48);
+            ctx.restore();
+
+            ctx.font = '600 31px "Readex Pro"';
+            const mw = ctx.measureText('النماذج المدعومة:').width;
+            const tw2 = mw + 19 + 4 * 41 + 3 * 19;
+            const rx = 540 + tw2 / 2;
+            tx('النماذج المدعومة:', rx, 1860, 31, MUT, 600, 'right');
+            ['gem', 'oai', 'cla', 'meta'].forEach((k, i) => icon(k, rx - mw - 19 - 20 - i * 60, 1860, 41));
+        }
+
+        // =========================================================================
+        // 4. FULL-SCREEN EXCEL CRM MODULE
+        // =========================================================================
+        const COLS = [{ w: 210, h: 'الاسم' }, { w: 214, h: 'الهاتف' }, { w: 150, h: 'المنصة' }, { w: 170, h: 'الباقة' }, { w: 110, h: 'السعر' }, { w: 162, h: 'الحالة' }];
+        const ROWS = [
+            ['منى عبد الله', '0111 452 9087', 'إنستغرام', 'باقة البداية', '450', 'جديد'],
+            ['كريم حسن', '0122 874 3310', 'واتساب', 'باقة الاحتراف', '1500', 'قيد المتابعة'],
+            ['سارة محمود', '0106 215 7764', 'فيسبوك', 'باقة النمو', '850', 'مؤكد'],
+            ['ياسر فتحي', '0100 639 4825', 'تيك توك', 'باقة البداية', '450', 'قيد المتابعة'],
+            ['هند إبراهيم', '0155 302 1198', 'واتساب', 'باقة النمو', '850', 'مؤكد'],
+            ['نور الدين', '0120 557 3019', 'تيك توك', 'باقة النمو', '850', 'مؤكد'],
+            ['دينا سمير', '0114 286 9403', 'واتساب', 'باقة البداية', '450', 'جديد'],
+            ['طارق عادل', '0101 742 6658', 'إنستغرام', 'باقة الاحتراف', '1500', 'مؤكد'],
+            ['رنا يوسف', '0127 318 5520', 'فيسبوك', 'باقة البداية', '450', 'قيد المتابعة'],
+            ['محمود رضا', '0150 964 2271', 'واتساب', 'باقة النمو', '850', 'مؤكد']
+        ];
+        const NEWROWS = [
+            { vals: ['أحمد سامي', '0109 481 2236', 'واتساب', 'باقة النمو', '850', 'مؤكد'], times: [16.6, 17.1, 17.6, 18.05, 18.5, 18.95], dur: 0.4 },
+            { vals: ['ليلى مصطفى', '0112 678 4451', 'إنستغرام', 'باقة البداية', '450', 'جديد'], times: [21.6, 21.88, 22.16, 22.4, 22.64, 22.88], dur: 0.22 },
+            { vals: ['عمر خالد', '0128 903 7712', 'فيسبوك', 'باقة الاحتراف', '1500', 'قيد المتابعة'], times: [23.6, 23.88, 24.16, 24.4, 24.64, 24.88], dur: 0.22 }
+        ];
+        const FIRST_NEW = 12;
+        const STY = { 'مؤكد': ['#c6efce', '#006100'], 'قيد المتابعة': ['#ffeb9c', '#9c5700'], 'جديد': ['#ddebf7', '#1f4e79'] };
+        const LET = 'ABCDEF';
+
+        function excel(t) {
+            const X = 0, Y = 0, Wd = W, Hh = H, NR = 20, RHW = 64, HEAD = 350, FOOT = 92;
+            const RH = (Hh - HEAD - FOOT) / NR;
+            const GR = X + Wd - RHW;
+            const TOP = Y + HEAD;
+            const colR = [], colL = [];
+            let cur = GR;
+
+            COLS.forEach(cc => { colR.push(cur); cur -= cc.w; colL.push(cur); });
+            const newTxt = (nr, i) => t < nr.times[i] ? '' : nr.vals[i].slice(0, Math.ceil(nr.vals[i].length * sc(t, nr.times[i], nr.times[i] + nr.dur)));
+            
+            let ak = 0, ai = 0;
+            NEWROWS.forEach((nr, k) => nr.times.forEach((ct, i) => { if (t >= ct) { ak = k; ai = i; } }));
+            const an = NEWROWS[ak];
+            const editing = t >= an.times[ai] && t < an.times[ai] + an.dur;
+            const actRow = FIRST_NEW + ak;
+
+            ctx.save();
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(X, Y, Wd, Hh);
+
+            // Title Bar
+            ctx.fillStyle = '#217346';
+            ctx.fillRect(X, Y, Wd, 70);
+            rr(X + 22, Y + 16, 38, 38, 8);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ex('X', X + 41, Y + 36, 28, '#217346', 800, 'center');
+            ex('AutoSave', X + 82, Y + 35, 20, '#fff', 500);
+            rr(X + 178, Y + 22, 52, 27, 13.5);
+            ctx.fillStyle = '#0f4a29';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(X + 216, Y + 35.5, 9, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ex('On', X + 240, Y + 35, 18, '#fff', 500);
+            ex('Bedaya_CRM.xlsx', X + 300, Y + 35, 24, '#fff', 600);
+            ex(editing ? 'Saving…' : '✓ Saved', X + 535, Y + 36, 20, 'rgba(255,255,255,.88)', 400);
+
+            rr(X + Wd - 262, Y + 15, 240, 40, 20);
+            ctx.fillStyle = 'rgba(255,255,255,.2)';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(X + Wd - 236, Y + 34, 7, 0, Math.PI * 2);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2.4;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(X + Wd - 231, Y + 39);
+            ctx.lineTo(X + Wd - 225, Y + 45);
+            ctx.stroke();
+            ex('Search', X + Wd - 212, Y + 36, 21, 'rgba(255,255,255,.92)', 400);
+
+            // Ribbon Tabs
+            ctx.fillStyle = '#f3f3f3';
+            ctx.fillRect(X, Y + 70, Wd, 182);
+            const tabs = ['File', 'Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'];
+            let tx0 = X + 26;
+            tabs.forEach(n => {
+                ctx.font = '400 22px "Segoe UI",Calibri,"Readex Pro",Arial,sans-serif';
+                const tw = ctx.measureText(n).width;
+                const on = n === 'Home';
+                ex(n, tx0, Y + 98, 22, on ? '#217346' : '#323130', on ? 600 : 400);
+                if (on) {
+                    ctx.fillStyle = '#217346';
+                    ctx.fillRect(tx0, Y + 116, tw, 4);
+                }
+                tx0 += tw + 38;
+            });
+
+            rr(X + 10, Y + 124, Wd - 20, 122, 10);
+            ctx.fillStyle = '#fbfbfb';
+            ctx.fill();
+            ctx.strokeStyle = '#e1dfdd';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            const sep = x => { ctx.fillStyle = '#e1dfdd'; ctx.fillRect(x, Y + 136, 1.5, 98); };
+            const glabel = (s, x) => ex(s, x, Y + 232, 17, '#605e5c', 400, 'center');
+
+            rr(X + 64, Y + 146, 44, 52, 6);
+            ctx.strokeStyle = '#605e5c';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            rr(X + 74, Y + 138, 24, 15, 4);
+            ctx.fillStyle = '#217346';
+            ctx.fill();
+            ex('Paste', X + 86, Y + 215, 17, '#323130', 400, 'center');
+            glabel('Clipboard', X + 97);
+            sep(X + 178);
+
+            rr(X + 192, Y + 140, 144, 34, 4);
+            ctx.strokeStyle = '#c8c6c4';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ex('Calibri', X + 204, Y + 157, 20, '#323130');
+            rr(X + 346, Y + 140, 58, 34, 4);
+            ctx.stroke();
+            ex('11', X + 360, Y + 157, 20, '#323130');
+
+            ex('B', X + 210, Y + 200, 26, '#323130', 800, 'center');
+            ex('I', X + 246, Y + 200, 26, '#323130', 400, 'center', 'ltr', true);
+            ex('U', X + 282, Y + 200, 26, '#323130', 400, 'center');
+            ctx.fillStyle = '#323130';
+            ctx.fillRect(X + 274, Y + 213, 17, 2);
+
+            ctx.strokeStyle = '#c8c6c4';
+            rr(X + 312, Y + 184, 34, 32, 4);
+            ctx.stroke();
+            ctx.fillStyle = '#ffeb3b';
+            ctx.fillRect(X + 318, Y + 207, 22, 5);
+            ex('A', X + 329, Y + 195, 20, '#323130', 600, 'center');
+
+            rr(X + 356, Y + 184, 34, 32, 4);
+            ctx.stroke();
+            ctx.fillStyle = '#c00000';
+            ctx.fillRect(X + 362, Y + 207, 22, 5);
+            ex('A', X + 373, Y + 195, 20, '#323130', 600, 'center');
+            glabel('Font', X + 298);
+            sep(X + 420);
+
+            [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([i, j]) => {
+                const bx = X + 440 + i * 62;
+                const by = Y + 146 + j * 42;
+                ctx.strokeStyle = '#605e5c';
+                ctx.lineWidth = 2.6;
+                [[28, 0], [20, 9], [28, 18]].forEach(([l, o]) => {
+                    ctx.beginPath();
+                    ctx.moveTo(bx, by + o);
+                    ctx.lineTo(bx + l, by + o);
+                    ctx.stroke();
+                });
+            });
+            glabel('Alignment', X + 503);
+            sep(X + 566);
+
+            rr(X + 580, Y + 140, 150, 34, 4);
+            ctx.strokeStyle = '#c8c6c4';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ex('General', X + 592, Y + 157, 20, '#323130');
+            ex('%', X + 596, Y + 200, 24, '#323130', 500, 'center');
+            ex(',', X + 646, Y + 197, 28, '#323130', 700, 'center');
+            ex('.00', X + 704, Y + 200, 20, '#323130', 500, 'center');
+            glabel('Number', X + 655);
+            sep(X + 746);
+
+            rr(X + 772, Y + 142, 72, 50, 5);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = '#c8c6c4';
+            ctx.stroke();
+            ctx.fillStyle = '#217346';
+            ctx.fillRect(X + 772, Y + 142, 72, 16);
+            ctx.fillStyle = '#e2efda';
+            ctx.fillRect(X + 772, Y + 172, 72, 10);
+            ex('Format as Table', X + 808, Y + 207, 17, '#323130', 400, 'center');
+
+            ctx.fillStyle = '#ffeb9c';
+            rr(X + 862, Y + 142, 54, 28, 4);
+            ctx.fill();
+            ctx.fillStyle = '#c6efce';
+            rr(X + 922, Y + 142, 54, 28, 4);
+            ctx.fill();
+            ex('Cond. Format', X + 919, Y + 207, 17, '#323130', 400, 'center');
+            glabel('Styles', X + 890);
+            sep(X + 1000);
+            ex('Editing', X + 1040, Y + 190, 17, '#605e5c', 400, 'center');
+
+            // Formula Bar
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(X, Y + 252, Wd, 54);
+            ctx.fillStyle = '#e1dfdd';
+            ctx.fillRect(X, Y + 305, Wd, 1.5);
+            rr(X + 10, Y + 260, 150, 38, 4);
+            ctx.strokeStyle = '#c8c6c4';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ex(LET[ai] + actRow, X + 26, Y + 279, 23, '#201f1e');
+            ex('fx', X + 194, Y + 279, 25, '#605e5c', 500, 'left', 'ltr', true);
+            rr(X + 232, Y + 260, Wd - 242, 38, 4);
+            ctx.strokeStyle = '#e1dfdd';
+            ctx.stroke();
+            ex(newTxt(an, ai), X + Wd - 28, Y + 279, 23, '#201f1e', 400, 'right', ai === 1 || ai === 4 ? 'ltr' : 'rtl');
+
+            // Columns Header
+            const CH = Y + 306;
+            ctx.fillStyle = '#efefef';
+            ctx.fillRect(X, CH, Wd, 44);
+            COLS.forEach((cc, i) => {
+                const on = i === ai;
+                if (on) {
+                    ctx.fillStyle = '#d3e6da';
+                    ctx.fillRect(colL[i], CH, cc.w, 44);
+                    ctx.fillStyle = '#217346';
+                    ctx.fillRect(colL[i], CH + 40, cc.w, 4);
+                }
+                ex(LET[i], colL[i] + cc.w / 2, CH + 22, 22, on ? '#217346' : '#605e5c', on ? 700 : 400, 'center');
+            });
+
+            ctx.fillStyle = '#efefef';
+            ctx.fillRect(GR, CH, RHW, 44);
+            ctx.beginPath();
+            ctx.moveTo(GR + 46, CH + 34);
+            ctx.lineTo(GR + 46, CH + 14);
+            ctx.lineTo(GR + 26, CH + 34);
+            ctx.closePath();
+            ctx.fillStyle = '#b9b9b9';
+            ctx.fill();
+
+            ctx.strokeStyle = '#d0d0d0';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(X, CH + 44);
+            ctx.lineTo(X + Wd, CH + 44);
+            ctx.stroke();
+
+            colL.forEach(x => {
+                ctx.beginPath();
+                ctx.moveTo(x, CH);
+                ctx.lineTo(x, CH + 44);
+                ctx.stroke();
+            });
+
+            ctx.beginPath();
+            ctx.moveTo(GR, CH);
+            ctx.lineTo(GR, CH + 44);
+            ctx.stroke();
+
+            // Grid Body
+            for (let r = 1; r <= NR; r++) {
+                const y = TOP + (r - 1) * RH;
+                let data = null, nr = null;
+                if (r >= 2 && r <= 11) data = ROWS[r - 2];
+                else if (r >= FIRST_NEW && r < FIRST_NEW + NEWROWS.length) { nr = NEWROWS[r - FIRST_NEW]; }
+
+                COLS.forEach((cc, i) => {
+                    const x = colL[i];
+                    let fill = '#fff', txtVal = '', col = '#201f1e';
+                    if (r === 1) {
+                        fill = '#217346';
+                        txtVal = cc.h;
+                        col = '#fff';
+                    } else if (data) {
+                        fill = r % 2 === 0 ? '#eef5ea' : '#fff';
+                        txtVal = data[i];
+                    } else if (nr) {
+                        txtVal = newTxt(nr, i);
+                        fill = txtVal ? (r % 2 === 0 ? '#eef5ea' : '#fff') : '#fff';
+                    }
+
+                    ctx.fillStyle = fill;
+                    ctx.fillRect(x, y, cc.w, RH);
+
+                    if (r > 1 && i === 5 && txtVal && STY[txtVal]) {
+                        ctx.fillStyle = STY[txtVal][0];
+                        ctx.fillRect(x, y, cc.w, RH);
+                        col = STY[txtVal][1];
+                    }
+                    if (!txtVal) return;
+
+                    const mid = y + RH / 2 + 1;
+                    if (r > 1 && i === 5) ex(txtVal, x + cc.w / 2, mid, 25, col, 600, 'center', 'rtl');
+                    else if (i === 1 || i === 4) ex(txtVal, colR[i] - 16, mid, 25, col, r === 1 ? 700 : 400, 'right', r === 1 ? 'rtl' : 'ltr');
+                    else ex(txtVal, colR[i] - 16, mid, 25, col, r === 1 ? 700 : 400, 'right', 'rtl');
+                });
+            }
+
+            // Filter Buttons
+            COLS.forEach((cc, i) => {
+                const bx = colL[i] + 10;
+                const by = TOP + (RH - 32) / 2;
+                rr(bx, by, 32, 32, 4);
+                ctx.fillStyle = '#f6f6f6';
+                ctx.fill();
+                ctx.strokeStyle = '#8fb89f';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(bx + 9, by + 13);
+                ctx.lineTo(bx + 23, by + 13);
+                ctx.lineTo(bx + 16, by + 22);
+                ctx.closePath();
+                ctx.fillStyle = '#444';
+                ctx.fill();
+            });
+
+            // Flash Row Animation
+            NEWROWS.forEach((nr, k) => {
+                const done = nr.times[5] + nr.dur;
+                if (t >= done) {
+                    const fl = 0.18 * (1 - sc(t, done, done + 0.9));
+                    if (fl > 0) {
+                        ctx.fillStyle = `rgba(33,115,70,${fl})`;
+                        ctx.fillRect(X, TOP + (FIRST_NEW - 1 + k) * RH, GR - X, RH);
+                    }
+                }
+            });
+
+            // Gridlines
+            ctx.strokeStyle = 'rgba(0,0,0,.14)';
+            ctx.lineWidth = 1.5;
+            for (let r = 0; r <= NR; r++) {
+                const y = TOP + r * RH;
+                ctx.beginPath();
+                ctx.moveTo(X, y);
+                ctx.lineTo(GR, y);
+                ctx.stroke();
+            }
+            colL.forEach(x => {
+                ctx.beginPath();
+                ctx.moveTo(x, TOP);
+                ctx.lineTo(x, TOP + NR * RH);
+                ctx.stroke();
+            });
+
+            // Row Headers
+            for (let r = 1; r <= NR; r++) {
+                const y = TOP + (r - 1) * RH;
+                const on = r === actRow;
+                ctx.fillStyle = on ? '#d3e6da' : '#efefef';
+                ctx.fillRect(GR, y, RHW, RH);
+                if (on) {
+                    ctx.fillStyle = '#217346';
+                    ctx.fillRect(GR + RHW - 4, y, 4, RH);
+                }
+                ex(String(r), GR + RHW / 2, y + RH / 2 + 1, 22, on ? '#217346' : '#605e5c', on ? 700 : 400, 'center');
+                ctx.strokeStyle = '#d0d0d0';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(GR, y + RH);
+                ctx.lineTo(GR + RHW, y + RH);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = '#d0d0d0';
+            ctx.beginPath();
+            ctx.moveTo(GR, TOP);
+            ctx.lineTo(GR, TOP + NR * RH);
+            ctx.stroke();
+
+            // Active Cell Highlight
+            {
+                const ax = colL[ai];
+                const ay = TOP + (actRow - 1) * RH;
+                const aw = COLS[ai].w;
+                rr(ax + 1, ay + 1, aw - 2, RH - 2, 0);
+                ctx.strokeStyle = '#217346';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.fillStyle = '#217346';
+                ctx.fillRect(ax - 6, ay + RH - 6, 12, 12);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(ax - 6, ay + RH - 6, 12, 12);
+                if (editing) {
+                    const v = newTxt(an, ai);
+                    ctx.font = '400 25px "Segoe UI",Calibri,"Readex Pro",sans-serif';
+                    const w1 = v ? ctx.measureText(v).width : 0;
+                    if (Math.floor(t * 6) % 2 === 0) {
+                        ctx.fillStyle = '#201f1e';
+                        ctx.fillRect(colR[ai] - 16 - w1 - 4, ay + 14, 2, RH - 28);
+                    }
+                }
+            }
+
+            // Sheet Tabs & Status Bar
+            const SB = TOP + NR * RH;
+            ctx.fillStyle = '#f3f3f3';
+            ctx.fillRect(X, SB, Wd, Y + Hh - SB);
+            ctx.fillStyle = '#d0d0d0';
+            ctx.fillRect(X, SB, Wd, 1.5);
+            ctx.fillStyle = '#8a8886';
+            ctx.beginPath();
+            ctx.moveTo(X + 30, SB + 16); ctx.lineTo(X + 18, SB + 26); ctx.lineTo(X + 30, SB + 36);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(X + 44, SB + 16); ctx.lineTo(X + 56, SB + 26); ctx.lineTo(X + 44, SB + 36);
+            ctx.fill();
+
+            rr(X + 84, SB, 150, 48, [0, 0, 8, 8]);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.fillStyle = '#217346';
+            ctx.fillRect(X + 84, SB + 44, 150, 4);
+
+            ex('العملاء', X + 159, SB + 23, 22, '#217346', 700, 'center', 'rtl');
+            ex('الطلبات', X + 290, SB + 23, 22, '#605e5c', 400, 'center', 'rtl');
+
+            ctx.beginPath();
+            ctx.arc(X + 376, SB + 24, 17, 0, Math.PI * 2);
+            ctx.strokeStyle = '#8a8886';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(X + 368, SB + 24); ctx.lineTo(X + 384, SB + 24);
+            ctx.moveTo(X + 376, SB + 16); ctx.lineTo(X + 376, SB + 32);
+            ctx.stroke();
+
+            const SS = SB + 52;
+            ctx.fillStyle = '#e9e9e9';
+            ctx.fillRect(X, SS, Wd, Y + Hh - SS);
+            ex(editing ? 'Enter' : 'Ready', X + 22, SS + 20, 20, '#323130', 400);
+
+            ctx.strokeStyle = '#8a8886';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(X + Wd - 360, SS + 20); ctx.lineTo(X + Wd - 150, SS + 20);
+            ctx.stroke();
+            ctx.fillStyle = '#605e5c';
+            ctx.fillRect(X + Wd - 256, SS + 11, 4, 18);
+
+            ex('−', X + Wd - 376, SS + 19, 24, '#605e5c', 400, 'center');
+            ex('+', X + Wd - 132, SS + 19, 24, '#605e5c', 400, 'center');
+            ex('100%', X + Wd - 22, SS + 20, 20, '#323130', 400, 'right');
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 5. CHANNELS TAB MODULE
+        // =========================================================================
+        function chip(x, y, text, ic, opt = {}) {
+            ctx.font = `600 32px "Readex Pro"`;
+            const w = ctx.measureText(text).width + 54 + (ic ? 51 : 0);
+            const h = 64;
+            rr(x - w, y, w, h, 17);
+            ctx.fillStyle = opt.bg || '#f5f5f4';
+            ctx.fill();
+            ctx.strokeStyle = '#f0eeeb';
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+            if (ic) icon(ic, x - 27 - 19, y + h / 2, 38);
+            tx(text, x - 27 - (ic ? 51 : 0), y + h / 2 + 2, 32, SEC, 600, 'right');
+            return w;
+        }
+
+        function connectedCard(cy, k, title, ltr, slot, idText, p) {
+            ctx.save();
+            ctx.globalAlpha *= p;
+            ctx.translate(0, (1 - p) * 30);
+            const H_ = 576;
+            rr(32, cy, 1016, H_, 43);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+
+            rr(881, cy + 43, 124, 124, 27);
+            ctx.fillStyle = '#f5f5f4';
+            ctx.fill();
+            ctx.strokeStyle = '#f0eeeb';
+            ctx.stroke();
+            icon(k, 943, cy + 105, 73);
+
+            if (ltr) {
+                ctx.direction = 'ltr';
+                tx(title, 843, cy + 76, 42, INK, 800, 'right', 'J');
+                ctx.direction = 'rtl';
+            } else tx(title, 843, cy + 76, 42, INK, 800, 'right');
+
+            ctx.font = '700 30px "Plus Jakarta Sans","Readex Pro"';
+            const tw = ctx.measureText(slot).width + 38;
+            rr(843 - tw, cy + 108, tw, 52, 11);
+            ctx.fillStyle = '#f5f5f4';
+            ctx.fill();
+            ctx.strokeStyle = '#f0eeeb';
+            ctx.stroke();
+            tx(slot, 843 - tw / 2, cy + 135, 30, MUT, 700, 'center');
+
+            ctx.font = '400 30px "Plus Jakarta Sans","Readex Pro"';
+            const iw = ctx.measureText(idText).width + 38 + 30 + 14;
+            rr(843 - tw - 16 - iw, cy + 108, iw, 52, 11);
+            ctx.fillStyle = '#f5f5f4';
+            ctx.fill();
+            ctx.strokeStyle = '#f0eeeb';
+            ctx.stroke();
+            const iL = 843 - tw - 16 - iw;
+            ctx.direction = 'ltr';
+            tx(idText, iL + iw - 19, cy + 135, 30, MUT, 400, 'right', 'J');
+            ctx.direction = 'rtl';
+            icon('copy', iL + 19 + 15, cy + 135, 32);
+
+            icon('bolt2', 1026, cy + 221, 30);
+            tx('المميزات النشطة على القناة:', 992, cy + 222, 30, MUT, 700, 'right');
+            const cx = 1005;
+            const w1 = chip(cx, cy + 248, 'الرد في الـ DMs', 'msgbot');
+            chip(cx - w1 - 16, cy + 248, 'الرد على التعليقات', 'msgs');
+            const w3 = chip(cx, cy + 328, 'التحويل المباشر', 'ushare');
+            chip(cx - w3 - 16, cy + 328, 'التسجيل في الـ CRM', 'clist');
+
+            ctx.save();
+            ctx.setLineDash([10, 8]);
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.beginPath();
+            ctx.moveTo(75, cy + 430);
+            ctx.lineTo(1005, cy + 430);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.font = '800 32px "Readex Pro"';
+            const bw = ctx.measureText('متصل ونشط').width + 68 + 30;
+            rr(1005 - bw, cy + 462, bw, 66, 33);
+            ctx.fillStyle = '#ebfcd2';
+            ctx.fill();
+            icon('okg', 1005 - 34 - 15, cy + 495, 32);
+            tx('متصل ونشط', 1005 - 34 - 32 - 12, cy + 497, 32, '#143823', 800, 'right');
+
+            icon('unlink', 265, cy + 495, 36);
+            tx('فصل القناة', 232, cy + 497, 34, '#dc2626', 700, 'right');
+            ctx.restore();
+        }
+
+        const PLATS = [
+            ['ig', 'إنستغرام (Instagram)', 'ربط إنستغرام'],
+            ['wa', 'واتساب (WhatsApp Business)', 'ربط واتساب'],
+            ['fb', 'فيسبوك (Facebook Messenger)', 'ربط فيسبوك'],
+            ['tt', 'تيك توك (TikTok Business)', 'ربط تيك توك'],
+            ['tg', 'تيليجرام (Telegram Bot)', 'ربط تيليجرام'],
+            ['gm', 'جيميل (Gmail)', 'قريباً']
+        ];
+
+        function channelsScreen(t) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+            const sy = 1520 * eo(sc(t, 7.6, 9.2));
+            ctx.save();
+            ctx.translate(0, -sy);
+
+            icon('social', 1016, 150, 56);
+            tx('فتحات وقنوات الربط الذكية', 982, 152, 53, INK, 800, 'right');
+            wrap('اربط حساباتك في مختلف المنصات للرد الفوري والأتمتة الشاملة وفق الفتحات المخصصة لاشتراكك', 1000, '400 34px "Readex Pro"')
+                .forEach((l, i) => tx(l, 1048, 222 + i * 54, 34, SEC, 400, 'right'));
+
+            rr(32, 316, 1016, 92, 27);
+            ctx.fillStyle = '#fafaf9';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+            icon('refresh', 678, 362, 40);
+            tx('تحديث القنوات', 640, 364, 35, INK, 700, 'right');
+
+            connectedCard(440, 'ig', '@bedaya_store', true, 'الفتحة #1', 'ID: 1784140023', eo(sc(t, 5.7, 6.2)));
+            connectedCard(1054, 'wa', '+20 103 420 2763', true, 'الفتحة #2', 'Cloud API • wa_9841', eo(sc(t, 6.1, 6.6)));
+
+            const sy0 = 1668, sh = 1500;
+            rr(32, sy0, 1016, sh, 54);
+            ctx.fillStyle = '#fafaf9';
+            ctx.fill();
+            ctx.save();
+            ctx.setLineDash([14, 10]);
+            ctx.strokeStyle = '#d6d3d1';
+            ctx.lineWidth = 4;
+            rr(32, sy0, 1016, sh, 54);
+            ctx.stroke();
+            ctx.restore();
+
+            rr(935, sy0 + 38, 97, 97, 27);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+            icon('plug', 983, sy0 + 86, 50);
+
+            tx('فتحة ربط فارغة (#3)', 900, sy0 + 64, 40, INK, 800, 'right');
+            tx('اختر المنصة واضغط على زر الربط للبدء فوراً:', 900, sy0 + 112, 30, MUT, 400, 'right');
+
+            PLATS.forEach((p, i) => {
+                const y = sy0 + 38 + 150 + 32 + i * 168;
+                const fbDone = p[0] === 'fb' && t >= 12.6;
+                rr(59, y, 962, 146, 38);
+                ctx.fillStyle = i === 5 ? '#fafaf9' : '#fff';
+                ctx.fill();
+                ctx.strokeStyle = BR;
+                ctx.lineWidth = 2.7;
+                ctx.stroke();
+
+                rr(929, y + 27, 92, 92, 27);
+                ctx.fillStyle = '#f5f5f4';
+                ctx.fill();
+                ctx.strokeStyle = '#f0eeeb';
+                ctx.stroke();
+                icon(p[0], 975, y + 73, 54);
+                tx(p[1], 897, y + 73, 35, INK, 800, 'right');
+
+                if (i === 5) {
+                    ctx.font = '800 35px "Readex Pro"';
+                    const nw = ctx.measureText(p[1]).width;
+                    ctx.font = '700 28px "Readex Pro"';
+                    const pw = ctx.measureText('قريباً').width + 28;
+                    rr(897 - nw - 18 - pw, y + 50, pw, 46, 23);
+                    ctx.fillStyle = BR;
+                    ctx.fill();
+                    tx('قريباً', 897 - nw - 18 - pw / 2, y + 74, 28, SEC, 700, 'center');
+                }
+
+                if (fbDone) {
+                    ctx.font = '800 32px "Readex Pro"';
+                    const bw = ctx.measureText('متصل ونشط').width + 64 + 30;
+                    rr(86, y + 37, bw, 72, 36);
+                    ctx.fillStyle = '#ebfcd2';
+                    ctx.fill();
+                    icon('okg', 86 + bw - 32 - 15, y + 73, 32);
+                    tx('متصل ونشط', 86 + bw - 32 - 32 - 12, y + 75, 32, '#143823', 800, 'right');
+                } else {
+                    const connecting = p[0] === 'fb' && t >= 11.75;
+                    const pr = p[0] === 'fb' ? Math.max(0, 1 - Math.abs(t - 11.5) / 0.22) : 0;
+                    ctx.save();
+                    ctx.translate(200, y + 73);
+                    ctx.scale(1 - 0.06 * pr, 1 - 0.06 * pr);
+                    const label = connecting ? 'جارٍ الربط...' : p[2];
+                    ctx.font = '700 32px "Readex Pro"';
+                    const lw = ctx.measureText(label).width + (i === 5 || connecting ? 0 : 48) + 64;
+                    rr(-lw / 2 - 6, -37, lw, 74, 27);
+                    if (i === 5) {
+                        ctx.fillStyle = '#fff';
+                        ctx.fill();
+                        ctx.strokeStyle = BR;
+                        ctx.stroke();
+                        tx(label, -6, 2, 32, MUT, 700, 'center');
+                    } else {
+                        ctx.fillStyle = INK;
+                        ctx.fill();
+                        tx(label, -6 - (connecting ? 0 : 24), 2, 32, '#fff', 700, 'center');
+                        if (!connecting) icon('link', -6 + lw / 2 - 32 - 14, 0, 34);
+                    }
+                    ctx.restore();
+                }
+            });
+
+            // Ripple على فيسبوك
+            const fy = sy0 + 38 + 150 + 32 + 2 * 168 + 73;
+            const r = sc(t, 11.4, 11.85);
+            if (r > 0 && r < 1) {
+                ctx.beginPath();
+                ctx.arc(200, fy, 30 + r * 70, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(28,25,23,${0.35 * (1 - r)})`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 6. PRICING PLANS MODULE
+        // =========================================================================
+        const PLANS = [
+            { id: 'free', bg: ['#ffffff', '#ffffff'], bd: '#e7e5e4', fg: INK, tag: 'تجربة مجانية', tagBg: '#f5f5f4', tagFg: SEC, title: 'الباقة التجريبية (Free)', sub: 'لتجربة واختبار المنصة', price: null, free: true, feat: ['2 فتحات ربط قنوات', '100 محادثة شهرياً', 'دعم ملفات المتجر الأساسي'], btn: 'الباقة الحالية' },
+            { id: 'starter', bg: ['#effce9', '#e1f7d5'], bd: '#b4f0a0', fg: '#143823', tag: '1. للمتاجر والمشاريع الناشئة', tagBg: '#d7f5c5', tagFg: '#143823', title: 'باقة البداية (Starter)', sub: 'أتمتة قناة تواصل واحدة', m: 450, y: 360, feat: ['ربط قناة واحدة (واتساب أو إنستغرام)', '1,000 محادثة بيعية شهرياً', 'تدوين الطلبات في جدول الـ CRM', 'دعم فني ومساعدة في الإعداد'], btn: 'ترقية للبداية', btnBg: '#143823' },
+            { id: 'growth', bg: ['#fff2eb', '#ffe3d4'], bd: '#ffc2a6', fg: '#661800', tag: '2. الأنشطة النشطة إعلانياً', tagBg: '#ffd4be', tagFg: '#661800', title: 'باقة النمو (Growth)', sub: 'تحويل المعلقين إلى مشترين', m: 850, y: 680, feat: ['ربط قناتين (واتساب + إنستغرام)', '4,000 محادثة ذكية شهرياً', 'أتمتة تعليقات المنشورات والـ DMs', 'تفريغ فوري في الـ CRM و Calendar'], btn: 'ترقية للنمو', btnBg: '#661800' },
+            { id: 'pro', bg: ['#f7edff', '#ecdaff'], bd: '#dcb3ff', fg: '#3d065f', tag: '3. الأكثر طلباً', tagBg: '#e0baff', tagFg: '#3d065f', title: 'الباقة الاحترافية (Pro)', sub: 'للأنشطة والشركات المتوسعة', m: 1400, y: 1120, feat: ['قنوات كاملة (واتساب، إنستغرام، فيسبوك)', 'محادثات بيعية غير محدودة', 'تدريب الوكيل على ملفات وقوائم الأسعار', 'تكامل كامل مع حزمة Google Workspace', 'أولوية دعم فني وتخصيص مستمر'], btn: 'الترقية للاحترافية', btnBg: '#3d065f', thick: true },
+            { id: 'scale', bg: ['#eef5ff', '#dbe8ff'], bd: '#b8d2ff', fg: '#190066', tag: '4. الفروع والشركات الكبيرة', tagBg: '#c8dcff', tagFg: '#190066', title: 'باقة الشركات (Scale)', sub: 'للأنشطة ذات الفروع المتعددة', m: 2800, y: 2240, feat: ['قنوات وأرقام غير محدودة', 'معالجة فائقة السرعة Ultra Latency', 'ربط الـ Webhooks البرمجية الخاصة', 'شروط تحكم وأمان مبيعات مخصصة'], btn: 'ترقية للشركات', btnBg: '#190066' },
+            { id: 'ent', bg: ['#fffbe6', '#fff2be'], bd: '#ffe680', fg: '#5c4300', tag: '5. حلول برمجية خاصة', tagBg: '#ffeb99', tagFg: '#5c4300', title: 'باقة المؤسسات (Enterprise)', sub: 'بنية تحتية وربط خاص بنظامك', custom: true, feat: ['سيرفر سحابي مخصص لنشاطك', 'ربط مخصص مع أنظمة ERP و CRM', 'اتفاقية مستوى خدمة وضمان استقرار (SLA)', 'مدير حساب ومستشار تقني مخصص'], btn: 'تواصل مع المبيعات', btnBg: '#5c4300' }
+        ];
+
+        const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        function planH(p) { return 59 + 58 + 27 + 60 + 44 + 130 + (38 + 38 + p.feat.length * 50 + (p.feat.length - 1) * 27) + 54 + 100 + 59; }
+
+        const PR_TOGGLE = 38.4;
+        function priceNow(p, t) {
+            const T0 = PR_TOGGLE, yr = t >= T0;
+            const tgt = String(yr ? p.y : p.m);
+            const pr = sc(t, T0, T0 + 0.5);
+            if (!yr || pr >= 1) return fmt(tgt);
+            const len = tgt.length, lock = Math.floor(pr * len);
+            let s = '';
+            for (let i = 0; i < len; i++) s += i < lock ? tgt[i] : Math.floor(((t * 37 + i * 13 + p.m) % 10));
+            return len > 3 ? s.slice(0, -3) + ',' + s.slice(-3) : s;
+        }
+
+        function PR_SCROLL(t) {
+            const a = eo(sc(t, 39.4, 42.6)) * 1700;
+            const b = eo(sc(t, 42.8, 44.4)) * 1300;
+            return a + b;
+        }
+
+        function pricingScreen(t) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+            const sy = PR_SCROLL(t);
+            ctx.save();
+            ctx.translate(0, -sy);
+
+            icon('receipt', 1016, 150, 56);
+            tx('خطط الأسعار والاشتراكات', 982, 152, 53, INK, 800, 'right');
+            wrap('اختر الخطة المناسبة لحجم أعمالك مع إمكانية الترقية أو التعديل في أي وقت', 1000, '400 34px "Readex Pro"')
+                .forEach((l, i) => tx(l, 1048, 222 + i * 54, 34, SEC, 400, 'right'));
+
+            const yr = t >= PR_TOGGLE + 0.05;
+            rr(32, 330, 1016, 112, 56);
+            ctx.fillStyle = '#f5f5f4';
+            ctx.fill();
+            ctx.strokeStyle = BR;
+            ctx.lineWidth = 2.7;
+            ctx.stroke();
+
+            const act = yr ? { x: 44, w: 498 } : { x: 538, w: 498 };
+            rr(act.x, 342, act.w, 88, 44);
+            ctx.fillStyle = '#fff';
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,.05)';
+            ctx.shadowBlur = 16;
+            ctx.shadowOffsetY = 5;
+            ctx.fill();
+            ctx.restore();
+
+            tx('دفع شهري', 787, 386, 35, yr ? SEC : INK, 700, 'center');
+            tx('دفع سنوي', 400, 386, 35, yr ? INK : SEC, 700, 'center');
+
+            ctx.font = '800 26px "Readex Pro"';
+            const sw = ctx.measureText('وفر 20%').width + 38;
+            rr(180 - sw / 2, 364, sw, 44, 22);
+            ctx.fillStyle = '#ebfcd2';
+            ctx.fill();
+            tx('وفر 20%', 180, 387, 26, '#143823', 800, 'center');
+
+            const r = sc(t, PR_TOGGLE - 0.1, PR_TOGGLE + 0.35);
+            if (r > 0 && r < 1) {
+                ctx.beginPath();
+                ctx.arc(400, 386, 30 + r * 80, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(28,25,23,${0.35 * (1 - r)})`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+
+            let y = 486;
+            PLANS.forEach(p => {
+                const h = planH(p);
+                const g = ctx.createLinearGradient(0, y, 0, y + h);
+                g.addColorStop(0, p.bg[0]);
+                g.addColorStop(1, p.bg[1]);
+
+                rr(32, y, 1016, h, 54);
+                ctx.fillStyle = g;
+                ctx.fill();
+                ctx.strokeStyle = p.bd;
+                ctx.lineWidth = p.thick ? 5.4 : 4;
+                ctx.stroke();
+
+                let cy = y + 59;
+                ctx.font = '800 30px "Readex Pro"';
+                const tw = ctx.measureText(p.tag).width + 54;
+                rr(1048 - 49 - tw, cy, tw, 48, 24);
+                ctx.fillStyle = p.tagBg;
+                ctx.fill();
+                tx(p.tag, 1048 - 49 - tw / 2, cy + 25, 30, p.tagFg, 800, 'center');
+                cy += 58 + 27;
+
+                tx(p.title, 999, cy, 45, p.fg, 800, 'right');
+                cy += 60;
+
+                ctx.globalAlpha *= 0.85;
+                tx(p.sub, 999, cy - 12, 33, p.fg, 400, 'right');
+                ctx.globalAlpha /= 0.85;
+                cy += 44;
+
+                const py = cy + 54;
+                if (p.custom) {
+                    tx('مخصص', 999, py, 62, p.fg, 800, 'right');
+                    tx('/ حسب الطلب', 999 - ctx.measureText('مخصص').width - 18, py + 6, 32, p.fg, 600, 'right');
+                } else if (p.free) {
+                    ctx.font = '800 69px "Plus Jakarta Sans","Readex Pro"';
+                    const zw = ctx.measureText('0').width;
+                    tx('0', 999, py, 69, p.fg, 800, 'right', 'J');
+                    tx('ج.م', 999 - zw - 14, py + 4, 46, p.fg, 800, 'right');
+                    ctx.font = '800 46px "Readex Pro"';
+                    const zc = ctx.measureText('ج.م').width;
+                    tx('/ للأبد', 999 - zw - 14 - zc - 20, py + 8, 32, MUT, 400, 'right');
+                } else {
+                    const v = priceNow(p, t);
+                    ctx.font = '800 69px "Plus Jakarta Sans","Readex Pro"';
+                    const vw = ctx.measureText(v).width;
+                    ctx.direction = 'ltr';
+                    tx(v, 999, py, 69, p.fg, 800, 'right', 'J');
+                    ctx.direction = 'rtl';
+                    ctx.font = '800 69px "Readex Pro"';
+                    tx('ج.م', 999 - vw - 14, py + 4, 46, p.fg, 800, 'right');
+                    ctx.font = '800 46px "Readex Pro"';
+                    const cw = ctx.measureText('ج.م').width;
+                    ctx.globalAlpha *= 0.85;
+                    tx(yr ? '/ شهرياً (مع الخصم)' : '/ شهرياً', 999 - vw - 14 - cw - 20, py + 8, 32, p.fg, 600, 'right');
+                    ctx.globalAlpha /= 0.85;
+                }
+                cy = py + 54;
+
+                ctx.fillStyle = 'rgba(0,0,0,.07)';
+                ctx.fillRect(49, cy + 38, 1016 - 34, 2.7);
+                cy += 38 + 38;
+
+                p.feat.forEach((f, i) => {
+                    const fy = cy + 25 + i * 77;
+                    icon(p.free ? 'ckk' : 'cck', 1048 - 49 - 20, fy, 43);
+                    tx(f, 1048 - 49 - 43 - 22, fy + 1, 35, p.fg, 600, 'right');
+                });
+                cy += p.feat.length * 50 + (p.feat.length - 1) * 27 + 54;
+
+                rr(81, cy, 918, 100, 27);
+                if (p.free) {
+                    ctx.fillStyle = '#fff';
+                    ctx.globalAlpha *= 0.6;
+                    ctx.fill();
+                    ctx.strokeStyle = BR;
+                    ctx.lineWidth = 2.7;
+                    ctx.stroke();
+                    ctx.globalAlpha /= 0.6;
+                    tx(p.btn, 540, cy + 52, 38, INK, 700, 'center');
+                } else {
+                    ctx.fillStyle = p.btnBg;
+                    ctx.fill();
+                    tx(p.btn, 540, cy + 52, 38, '#fff', 700, 'center');
+                }
+                y += h + 43;
+            });
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // 7. TIMELINE CONTROLLER & MASTER DRAW
+        // =========================================================================
+        const OFF = 9.3;
+
+        function overlayPill(a, text) {
+            ctx.save();
+            ctx.globalAlpha = a;
+            rr(90, 1700, 900, 134, 67);
+            ctx.fillStyle = INK;
+            ctx.fill();
+            tx(text, W / 2, 1769, 54, '#fff', 700);
+            ctx.restore();
+        }
+
+        function toastCard(a, title, sub) {
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.translate(0, (1 - a) * 40);
+            card(110, 1690, 860, 134, 46);
+            ctx.beginPath();
+            ctx.arc(200, 1757, 34, 0, Math.PI * 2);
+            ctx.fillStyle = '#217346';
+            ctx.fill();
+            icon('chk', 200, 1757, 36);
+            tx(title, 610, 1733, 38, INK, 700, 'center');
+            tx(sub, 610, 1786, 27, MUT, 500, 'center');
+            ctx.restore();
+        }
+
+        export async function prepareIdentity() {
+            logToConsole("بدء تحميل خطوط منصة بداية وأيقونات النظام...", "info");
+            
+            // تحميل الخطوط الأساسية
+            await Promise.allSettled([
+                document.fonts.load('400 40px "Readex Pro"'),
+                document.fonts.load('600 40px "Readex Pro"'),
+                document.fonts.load('700 40px "Readex Pro"'),
+                document.fonts.load('800 40px "Readex Pro"'),
+                document.fonts.load('700 40px "Plus Jakarta Sans"')
+            ]);
+
+            // تحميل كافة متجهات الأيقونات من Iconify API في الذاكرة
+            const iconKeys = Object.keys(SRC);
+            await Promise.allSettled(iconKeys.map(loadIcon));
+            logToConsole(`تم تجهيز وتحميل ${iconKeys.length} أيقونة بنجاح ✓`, "info");
+        }
+
+        export async function drawSceneAtTime(t) {
+            ctx.direction = 'rtl';
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = WS;
+            ctx.fillRect(0, 0, W, H);
+
+            // A — المشهد الافتتاحي: الهوك الليلي (0.0s إلى 5.4s)
+            const aA = 1 - sc(t, 5.0, 5.4);
+            if (aA > 0) {
+                ctx.globalAlpha = aA;
+                tx('٣:١٢ ص', W / 2, 250, 170, INK, 700);
+                tx('الفجر.. والكل نايم', W / 2, 395, 44, MUT, 400);
+
+                const n = [
+                    ['wa', 'واتساب', 'السعر كام؟'],
+                    ['ig', 'إنستغرام', 'متاح النهاردة؟'],
+                    ['fb', 'فيسبوك ماسنجر', 'عايز أطلب دلوقتي'],
+                    ['tt', 'تيك توك', 'فين الرد؟']
+                ];
+
+                n.forEach((m, i) => {
+                    const p = eo(sc(t, 0.3 + i * 0.7, 0.75 + i * 0.7));
+                    if (p <= 0) return;
+                    const y = 520 + i * 190 + (1 - p) * -50;
+                    ctx.globalAlpha = aA * p;
+                    card(90, y, 900, 160, 34);
+                    icon(m[0], 915, y + 80, 78);
+                    tx(m[1], 850, y + 52, 30, MUT, 500, 'right');
+                    tx(m[2], 850, y + 106, 44, INK, 600, 'right');
+                    tx('الآن', 130, y + 52, 28, MUT, 400, 'left');
+                });
+
+                ctx.globalAlpha = aA * eo(sc(t, 3.0, 3.5));
+                rr(W / 2 - 200, 1330, 400, 74, 37);
+                ctx.fillStyle = INK;
+                ctx.fill();
+                tx('٤ رسائل بدون رد', W / 2, 1368, 32, '#fff', 600);
+
+                ctx.globalAlpha = aA * eo(sc(t, 3.6, 4.2));
+                tx('عميلك بيسأل.. وانت نايم؟', W / 2, 1560, 70, INK, 700);
+
+                ctx.globalAlpha = aA * eo(sc(t, 4.3, 4.9));
+                tx('كل رد متأخر = عميل راح للمنافس', W / 2, 1660, 42, SEC, 400);
+            }
+
+            // B — تبويب القنوات الذكية (5.2s إلى 14.6s)
+            const aCh = sc(t, 5.2, 5.6) * (1 - sc(t, 14.1, 14.6));
+            if (aCh > 0) {
+                ctx.globalAlpha = aCh;
+                channelsScreen(t);
+                overlayPill(aCh * eo(sc(t, 6.3, 6.8)) * (1 - sc(t, 8.3, 8.6)), 'كل قنواتك في مكان واحد');
+                overlayPill(aCh * eo(sc(t, 9.6, 10.0)) * (1 - sc(t, 12.3, 12.6)), 'اربط قناة جديدة بضغطة');
+                
+                const tt = eo(sc(t, 12.7, 13.1)) * (1 - sc(t, 14.0, 14.4));
+                if (tt > 0) toastCard(aCh * tt, 'اتربط فيسبوك والوكيل بدأ يرد', 'الفتحة #3  •  متصل ونشط');
+            }
+
+            // C — محاكاة الشات الذكي (14.5s إلى 24.8s)
+            const tc = t - OFF;
+            const aC = sc(t, 14.5, 14.9) * (1 - sc(tc, 15.0, 15.5));
+            if (aC > 0) {
+                ctx.globalAlpha = aC;
+                chatScreen(tc);
+            }
+
+            // D — شيت Excel وتفريغ الـ CRM لحظياً (24.3s إلى 36.4s)
+            const aE = sc(tc, 15.0, 15.5) * (1 - sc(t, 36.2, 36.7));
+            if (aE > 0) {
+                ctx.globalAlpha = aE;
+                excel(tc);
+
+                const ti = eo(sc(tc, 19.5, 19.9)) * (1 - sc(tc, 21.4, 21.8));
+                if (ti > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = aE * ti;
+                    ctx.translate(0, (1 - ti) * 40);
+                    card(110, 1650, 860, 134, 46);
+                    ctx.beginPath();
+                    ctx.arc(200, 1717, 34, 0, Math.PI * 2);
+                    ctx.fillStyle = '#217346';
+                    ctx.fill();
+                    icon('chk', 200, 1717, 36);
+                    tx('اتضاف عميل جديد في ملف Excel', 610, 1693, 40, INK, 700, 'center');
+                    tx('Bedaya_CRM.xlsx  •  الصف 12', 610, 1746, 27, MUT, 500, 'center', 'J');
+                    ctx.restore();
+                }
+
+                const tg = eo(sc(tc, 25.4, 25.9));
+                if (tg > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = aE * tg;
+                    ctx.translate(0, (1 - tg) * 40);
+                    rr(90, 1650, 900, 134, 67);
+                    ctx.fillStyle = INK;
+                    ctx.fill();
+                    tx('يرد ويسجّل.. وانت نايم', W / 2, 1719, 58, '#fff', 700);
+                    ctx.restore();
+                }
+            }
+
+            // E — خطط وباقات الأسعار (36.2s إلى 45.1s)
+            const aP = sc(t, 36.2, 36.7) * (1 - sc(t, 44.6, 45.1));
+            if (aP > 0) {
+                ctx.globalAlpha = aP;
+                pricingScreen(t);
+                overlayPill(aP * eo(sc(t, 37.0, 37.5)) * (1 - sc(t, 39.0, 39.3)), 'باقات على قد شغلك');
+                overlayPill(aP * eo(sc(t, 39.6, 40.1)) * (1 - sc(t, 43.0, 43.3)), 'وفّر 20% مع الدفع السنوي');
+                overlayPill(aP * eo(sc(t, 43.6, 44.0)) * (1 - sc(t, 44.5, 44.8)), 'ابدأ من 450 ج.م في الشهر');
+            }
+
+            // F — شاشة الدعوة للعمل (CTA) والختام (44.9s إلى 50.0s)
+            const tD = t - 17.9;
+            const aD = sc(tD, 27.0, 27.4);
+            if (aD > 0) {
+                ctx.globalAlpha = aD;
+                logo(W / 2, 520, 300);
+                tx('جرّب مجانًا', W / 2, 860, 96, INK, 700);
+
+                const pu = 1 + 0.025 * Math.sin(t * 8);
+                ctx.save();
+                ctx.translate(W / 2, 1070);
+                ctx.scale(pu, pu);
+                rr(-400, -75, 800, 150, 75);
+                ctx.fillStyle = INK;
+                ctx.fill();
+                ctx.direction = 'ltr';
+                tx('bedaya.web.app', 0, 4, 66, '#fff', 700, 'center', 'J');
+                ctx.restore();
+                ctx.direction = 'rtl';
+
+                ['wa', 'ig', 'fb', 'tt', 'tg'].forEach((k, i) => {
+                    const p = eo(sc(tD, 27.3 + i * 0.1, 27.8 + i * 0.1));
+                    ctx.globalAlpha = aD * p;
+                    const x = W / 2 + (i - 2) * 170;
+                    const y = 1330;
+                    card(x - 65, y - 65, 130, 130, 36);
+                    icon(k, x, y, 70);
+                });
+
+                ctx.globalAlpha = aD * eo(sc(tD, 28.1, 28.7));
+                tx('بدون بطاقة ائتمان  •  جاهز في ٥ دقائق', W / 2, 1530, 38, SEC, 400);
+            }
+        }
+
+        // =========================================================================
+        // 8. FIXED TECHNICAL RUNTIME LAYER (Ofoq Harness Engine)
+        // =========================================================================
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            state.isRendering = true;
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
