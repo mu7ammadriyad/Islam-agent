@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bedaya – Full Product Demo (v3 · Mesh Pro)</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Readex+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        /* إطار المعاينة المتجاوب بالكامل مع كافة الشاشات بالـ vh و vw */
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f5;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // ============ IDENTITY LAYER (CUSTOM MOTION ENGINE) ============
+/* ============ الثوابت ============ */
+const W=1536,H=864,SBW=245,MAINW=W-SBW,BASE=1920/W;
+const C={bg:'#f5f5f4',surf:'#fff',tp:'#1c1917',ts:'#57534e',tm:'#8c857f',bd:'#e7e5e4',bds:'#f0eeeb',f9:'#fafaf9',code:'#f5f4f2',gBg:'#ebfcd2',gBd:'#b4f0a0',gDark:'#143823',oBg:'#ffeee6',oDark:'#661800'};
+let FONT='"Readex Pro","Segoe UI",Tahoma,sans-serif';
+const TB={"bolt":"<path d=\"M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11\"></path>","plug":"<path d=\"M9.785 6l8.215 8.215l-2.054 2.054a5.81 5.81 0 1 1 -8.215 -8.215l2.054 -2.054z\"></path><path d=\"M4 20l3.5 -3.5\"></path><path d=\"M15 4l-3.5 3.5\"></path><path d=\"M20 9l-3.5 3.5\"></path>","unlink":"<path d=\"M17 22v-2\"></path><path d=\"M9 15l6 -6\"></path><path d=\"M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464\"></path><path d=\"M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463\"></path><path d=\"M20 17h2\"></path><path d=\"M2 7h2\"></path><path d=\"M7 2v2\"></path>","link":"<path d=\"M9 15l6 -6\"></path><path d=\"M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464\"></path><path d=\"M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463\"></path>","copy":"<path d=\"M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z\"></path><path d=\"M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1\"></path>","check":"<path d=\"M5 12l5 5l10 -10\"></path>","messages":"<path d=\"M21 14l-3 -3h-7a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1h9a1 1 0 0 1 1 1v10\"></path><path d=\"M14 15v2a1 1 0 0 1 -1 1h-7l-3 3v-10a1 1 0 0 1 1 -1h2\"></path>","user-share":"<path d=\"M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0\"></path><path d=\"M6 21v-2a4 4 0 0 1 4 -4h3\"></path><path d=\"M16 22l5 -5\"></path><path d=\"M21 21.5v-4.5h-4.5\"></path>","adjustments-horizontal":"<path d=\"M14 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M4 6l8 0\"></path><path d=\"M16 6l4 0\"></path><path d=\"M8 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M4 12l2 0\"></path><path d=\"M10 12l10 0\"></path><path d=\"M17 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M4 18l11 0\"></path><path d=\"M19 18l1 0\"></path>","message-chatbot":"<path d=\"M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z\"></path><path d=\"M9.5 9h.01\"></path><path d=\"M14.5 9h.01\"></path><path d=\"M9.5 13a3.5 3.5 0 0 0 5 0\"></path>","social":"<path d=\"M12 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M5 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M19 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M12 14m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0\"></path><path d=\"M12 7l0 4\"></path><path d=\"M6.7 17.8l2.8 -2\"></path><path d=\"M17.3 17.8l-2.8 -2\"></path>","chart-bar":"<path d=\"M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z\"></path><path d=\"M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z\"></path><path d=\"M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z\"></path><path d=\"M4 20h14\"></path>","inbox":"<path d=\"M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z\"></path><path d=\"M4 13h3l3 3h4l3 -3h3\"></path>","users":"<path d=\"M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0\"></path><path d=\"M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2\"></path><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"></path><path d=\"M21 21v-2a4 4 0 0 0 -3 -3.85\"></path>","receipt-2":"<path d=\"M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2\"></path><path d=\"M14 8h-2.5a1.5 1.5 0 0 0 0 3h1a1.5 1.5 0 0 1 0 3h-2.5m2 0v1.5m0 -9v1.5\"></path>","settings":"<path d=\"M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z\"></path><path d=\"M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0\"></path>","headset":"<path d=\"M4 14v-3a8 8 0 1 1 16 0v3\"></path><path d=\"M18 19c0 1.657 -2.686 3 -6 3\"></path><path d=\"M4 14a2 2 0 0 1 2 -2h1a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3z\"></path><path d=\"M15 14a2 2 0 0 1 2 -2h1a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3z\"></path>","search":"<path d=\"M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0\"></path><path d=\"M21 21l-6 -6\"></path>","logout":"<path d=\"M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2\"></path><path d=\"M9 12h12l-3 -3\"></path><path d=\"M18 15l3 -3\"></path>","layout-sidebar-right-collapse":"<path d=\"M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z\"></path><path d=\"M15 4v16\"></path><path d=\"M9 10l2 2l-2 2\"></path>","refresh":"<path d=\"M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4\"></path><path d=\"M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4\"></path>","message-2-bolt":"<path d=\"M8 9h8\"></path><path d=\"M8 13h6\"></path><path d=\"M13 20l-1 1l-3 -3h-3a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5.5\"></path><path d=\"M19 16l-2 3h4l-2 3\"></path>","clipboard-list":"<path d=\"M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2\"></path><path d=\"M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z\"></path><path d=\"M9 12l.01 0\"></path><path d=\"M13 12l2 0\"></path><path d=\"M9 16l.01 0\"></path><path d=\"M13 16l2 0\"></path>","x":"<path d=\"M18 6l-12 12\"></path><path d=\"M6 6l12 12\"></path>","plus":"<path d=\"M12 5l0 14\"></path><path d=\"M5 12l14 0\"></path>","device-floppy":"<path d=\"M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2\"></path><path d=\"M12 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M14 4l0 4l-6 0l0 -4\"></path>","message-plus":"<path d=\"M8 9h8\"></path><path d=\"M8 13h6\"></path><path d=\"M12.01 18.594l-4.01 2.406v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5.5\"></path><path d=\"M16 19h6\"></path><path d=\"M19 16v6\"></path>","rotate-clockwise":"<path d=\"M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5\"></path>","paperclip":"<path d=\"M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5\"></path>","arrow-forward":"<path d=\"M15 11l4 4l-4 4m4 -4h-11a4 4 0 0 1 0 -8h1\"></path>","truck-delivery":"<path d=\"M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\"></path><path d=\"M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5\"></path><path d=\"M3 9l4 0\"></path>","shopping-cart-check":"<path d=\"M4 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0\"></path><path d=\"M11.5 17h-5.5v-14h-2\"></path><path d=\"M6 5l14 1l-1 7h-13\"></path><path d=\"M15 19l2 2l4 -4\"></path>","rotate-2":"<path d=\"M15 4.55a8 8 0 0 0 -6 14.9m0 -4.45v5h-5\"></path><path d=\"M18.37 7.16l0 .01\"></path><path d=\"M13 19.94l0 .01\"></path><path d=\"M16.84 18.37l0 .01\"></path><path d=\"M19.37 15.1l0 .01\"></path><path d=\"M19.94 11l0 .01\"></path>","credit-card":"<path d=\"M3 5m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z\"></path><path d=\"M3 10l18 0\"></path><path d=\"M7 15l.01 0\"></path><path d=\"M11 15l2 0\"></path>","circle-check":"<path d=\"M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0\"></path><path d=\"M9 12l2 2l4 -4\"></path>","message-2-code":"<path d=\"M8 9h8\"></path><path d=\"M8 13h6\"></path><path d=\"M12 21l-1 -1l-2 -2h-3a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v6\"></path><path d=\"M20 21l2 -2l-2 -2\"></path><path d=\"M17 17l-2 2l2 2\"></path>","cloud-upload":"<path d=\"M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1\"></path><path d=\"M9 15l3 -3l3 3\"></path><path d=\"M12 12l0 9\"></path>"};
+const FB_A={"solar:chat-square-code-bold-duotone": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 9h8\"></path><path d=\"M8 13h6\"></path><path d=\"M12 21l-1 -1l-2 -2h-3a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v6\"></path><path d=\"M20 21l2 -2l-2 -2\"></path><path d=\"M17 17l-2 2l2 2\"></path></svg>", "solar:clipboard-list-bold-duotone": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2\"></path><path d=\"M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z\"></path><path d=\"M9 12l.01 0\"></path><path d=\"M13 12l2 0\"></path><path d=\"M9 16l.01 0\"></path><path d=\"M13 16l2 0\"></path></svg>", "solar:cloud-upload-bold-duotone": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1\"></path><path d=\"M9 15l3 -3l3 3\"></path><path d=\"M12 12l0 9\"></path></svg>", "logos:google-gemini": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#3186FF\" d=\"M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81\"/></svg>", "logos:claude-icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#D97757\" d=\"m4.714 15.956 4.718-2.648.079-.23-.08-.128h-.23l-.79-.048-2.695-.073-2.337-.097-2.265-.122-.57-.121-.535-.704.055-.353.48-.321.685.06 1.518.104 2.277.157 1.651.098 2.447.255h.389l.054-.158-.133-.097-.103-.098-2.356-1.596-2.55-1.688-1.336-.972-.722-.491L2 6.223l-.158-1.008.656-.722.88.06.224.061.893.686 1.906 1.476 2.49 1.833.364.304.146-.104.018-.072-.164-.274-1.354-2.446-1.445-2.49-.644-1.032-.17-.619a3 3 0 0 1-.103-.729L6.287.133 6.7 0l.995.134.42.364.619 1.415L9.735 4.14l1.555 3.03.455.898.243.832.09.255h.159V9.01l.127-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.583.28.48.685-.067.444-.286 1.851-.558 2.903-.365 1.942h.213l.243-.242.983-1.306 1.652-2.064.728-.82.85-.904.547-.431h1.032l.759 1.129-.34 1.166-1.063 1.347-.88 1.142-1.263 1.7-.79 1.36.074.11.188-.02 2.853-.606 1.542-.28 1.84-.315.832.388.09.395-.327.807-1.967.486-2.307.462-3.436.813-.043.03.049.061 1.548.146.662.036h1.62l3.018.225.79.522.473.638-.08.485-1.213.62-1.64-.389-3.825-.91-1.31-.329h-.183v.11l1.093 1.068 2.003 1.81 2.508 2.33.127.578-.321.455-.34-.049-2.204-1.657-.85-.747-1.925-1.62h-.127v.17l.443.649 2.343 3.521.122 1.08-.17.353-.607.213-.668-.122-1.372-1.924-1.415-2.168-1.141-1.943-.14.08-.674 7.254-.316.37-.728.28-.607-.461-.322-.747.322-1.476.388-1.924.316-1.53.285-1.9.17-.632-.012-.042-.14.018-1.432 1.967-2.18 2.945-1.724 1.845-.413.164-.716-.37.066-.662.401-.589 2.386-3.036 1.439-1.882.929-1.086-.006-.158h-.055L4.138 18.56l-1.13.146-.485-.456.06-.746.231-.243 1.907-1.312Z\"/></svg>", "logos:meta-icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#0081FB\" d=\"M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a7 7 0 0 0 .265.86 5.3 5.3 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.7 3.7 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a45 45 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.26 2.26 0 0 1 1.088-.285\"/></svg>", "logos:openai-icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"9\" fill=\"none\" stroke=\"#000\" stroke-width=\"2\"/><path d=\"M12 7l4 2.3v4.6L12 16.2 8 13.9V9.3z\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.6\"/></svg>"};
+const FB_B={"skill-icons:instagram": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#E4405F\" d=\"M7.03.084c-1.277.06-2.149.264-2.91.563a5.9 5.9 0 0 0-2.124 1.388 5.9 5.9 0 0 0-1.38 2.127C.321 4.926.12 5.8.064 7.076s-.069 1.688-.063 4.947.021 3.667.083 4.947c.061 1.277.264 2.149.563 2.911.308.789.72 1.457 1.388 2.123a5.9 5.9 0 0 0 2.129 1.38c.763.295 1.636.496 2.913.552 1.278.056 1.689.069 4.947.063s3.668-.021 4.947-.082c1.28-.06 2.147-.265 2.91-.563a5.9 5.9 0 0 0 2.123-1.388 5.9 5.9 0 0 0 1.38-2.129c.295-.763.496-1.636.551-2.912.056-1.28.07-1.69.063-4.948-.006-3.258-.02-3.667-.081-4.947-.06-1.28-.264-2.148-.564-2.911a5.9 5.9 0 0 0-1.387-2.123 5.86 5.86 0 0 0-2.128-1.38C19.074.322 18.202.12 16.924.066 15.647.009 15.236-.006 11.977 0S8.31.021 7.03.084m.14 21.693c-1.17-.05-1.805-.245-2.228-.408a3.7 3.7 0 0 1-1.382-.895 3.7 3.7 0 0 1-.9-1.378c-.165-.423-.363-1.058-.417-2.228-.06-1.264-.072-1.644-.08-4.848-.006-3.204.006-3.583.061-4.848.05-1.169.246-1.805.408-2.228.216-.561.477-.96.895-1.382a3.7 3.7 0 0 1 1.379-.9c.423-.165 1.057-.361 2.227-.417 1.265-.06 1.644-.072 4.848-.08 3.203-.006 3.583.006 4.85.062 1.168.05 1.804.244 2.227.408.56.216.96.475 1.382.895s.681.817.9 1.378c.165.422.362 1.056.417 2.227.06 1.265.074 1.645.08 4.848.005 3.203-.006 3.583-.061 4.848-.051 1.17-.245 1.805-.408 2.23-.216.56-.477.96-.896 1.38a3.7 3.7 0 0 1-1.378.9c-.422.165-1.058.362-2.226.418-1.266.06-1.645.072-4.85.079s-3.582-.006-4.848-.06m9.783-16.192a1.44 1.44 0 1 0 1.437-1.442 1.44 1.44 0 0 0-1.437 1.442M5.839 12.012a6.161 6.161 0 1 0 12.323-.024 6.162 6.162 0 0 0-12.323.024M8 12.008A4 4 0 1 1 12.008 16 4 4 0 0 1 8 12.008\"/></svg>", "logos:telegram": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#26A5E4\" d=\"M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm4.962 7.224c.1-.002.321.023.465.14a.5.5 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024q-.159.037-5.061 3.345-.72.495-1.302.48c-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789q.04-.324.893-.663 5.247-2.286 6.998-3.014c3.332-1.386 4.025-1.627 4.476-1.635\"/></svg>", "logos:whatsapp-icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#25D366\" d=\"M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52s.198-.298.298-.497c.099-.198.05-.371-.025-.52s-.669-1.612-.916-2.207c-.242-.579-.487-.5-.669-.51a13 13 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074s2.096 3.2 5.077 4.487c.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413s.248-1.289.173-1.413c-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.82 9.82 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.82 11.82 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.9 11.9 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.82 11.82 0 0 0-3.48-8.413\"/></svg>", "logos:facebook": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#1877F2\" d=\"M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a9 9 0 0 1 1.141.195v3.325a9 9 0 0 0-.653-.036 27 27 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.7 1.7 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647\"/></svg>", "logos:tiktok-icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#000000\" d=\"M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07\"/></svg>", "logos:google-gmail": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"192\" height=\"192\" viewBox=\"0 0 24 24\"><path fill=\"#EA4335\" d=\"M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457\"/></svg>"};
+const FB=Object.assign({},FB_A,FB_B);
+const HANDS={open:"M12.6,16.6c-0.1-0.4-0.2-0.8-0.4-1.6c-0.2-0.6-0.3-0.9-0.5-1.2 c-0.2-0.5-0.3-0.7-0.5-1.2c-0.1-0.3-0.4-1-0.5-1.4c-0.1-0.5,0-0.9,0.2-1.2c0.3-0.3,1-0.5,1.4-0.4c0.4,0.1,0.7,0.5,0.9,0.8 c0.3,0.5,0.4,0.6,0.7,1.5c0.4,1,0.6,1.9,0.6,2.2l0.1,0.5c0,0,0-1.1,0-1.2c0-1-0.1-1.8,0-2.9c0-0.1,0.1-0.6,0.1-0.7 c0.1-0.5,0.3-0.8,0.7-1c0.4-0.2,0.9-0.2,1.4,0c0.4,0.2,0.6,0.5,0.7,1c0,0.1,0.1,1,0.1,1.1c0,1,0,1.6,0,2.2c0,0.2,0,1.6,0,1.5 c0.1-0.7,0.1-3.2,0.3-3.9c0.1-0.4,0.4-0.7,0.8-0.9c0.4-0.2,1.1-0.1,1.4,0.2c0.3,0.3,0.4,0.7,0.5,1.2c0,0.4,0,0.9,0,1.2 c0,0.9,0,1.3,0,2.1c0,0,0,0.3,0,0.2c0.1-0.3,0.2-0.5,0.3-0.7c0-0.1,0.2-0.6,0.4-0.9c0.1-0.2,0.2-0.4,0.4-0.7 c0.2-0.3,0.4-0.4,0.7-0.6c0.5-0.2,1.1,0.1,1.3,0.6c0.1,0.2,0,0.7,0,1.1c-0.1,0.6-0.3,1.3-0.4,1.6c-0.1,0.4-0.3,1.2-0.3,1.6 c-0.1,0.4-0.2,1.4-0.4,1.8c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9 s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4 c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1-1.1-1.3-1.6c-0.2-0.4-0.3-1-0.2-1.3 c0.2-0.6,0.7-0.9,1.4-0.8c0.5,0,0.8,0.2,1.2,0.5c0.2,0.2,0.6,0.5,0.8,0.7c0.2,0.2,0.2,0.3,0.4,0.5C12.6,16.8,12.6,16.9,12.6,16.6",closed:"M12.6,13c0.5-0.2,1.4-0.1,1.7,0.5c0.2,0.5,0.4,1.2,0.4,1.1c0-0.4,0-1.2,0.1-1.6 c0.1-0.3,0.3-0.6,0.7-0.7c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.3,0.1-1.2,0.3-1.6 c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7 c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8 c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0 c-0.2,0.4-0.7,1.1-1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1l-0.8-0.9c-0.3-0.4-1-0.9-1.2-2 c-0.2-0.9-0.2-1.4,0-1.8c0.2-0.4,0.7-0.6,0.9-0.6c0.2,0,0.7,0,0.9,0.1c0.2,0.1,0.3,0.2,0.5,0.4c0.2,0.3,0.3,0.5,0.2,0.1 c-0.1-0.3-0.3-0.6-0.4-1c-0.1-0.4-0.4-0.9-0.4-1.5C11.7,13.9,11.8,13.3,12.6,13",point:"M11.3,20.4c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1.2-1.5-1.5-1.9 c-0.2-0.4-0.2-0.6-0.1-1c0.1-0.6,0.7-1.1,1.4-1.1c0.5,0,1,0.4,1.4,0.7c0.2,0.2,0.5,0.6,0.7,0.8c0.2,0.2,0.2,0.3,0.4,0.5 c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.5-0.2-1.3-0.4-2.1c-0.1-0.6-0.2-0.7-0.3-1.1c-0.1-0.5-0.2-0.8-0.3-1.3c-0.1-0.3-0.2-1.1-0.3-1.5 c-0.1-0.5-0.1-1.4,0.3-1.8c0.3-0.3,0.9-0.4,1.3-0.2c0.5,0.3,0.8,1,0.9,1.3c0.2,0.5,0.4,1.2,0.5,2c0.2,1,0.5,2.5,0.5,2.8 c0-0.4-0.1-1.1,0-1.5c0.1-0.3,0.3-0.7,0.7-0.8c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8 c0.1-0.4,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7 c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7 c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1 c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1L11.3,20.4z"};
+const HP={};for(const k in HANDS)HP[k]=new Path2D(HANDS[k]);
+const LINES=[[19.6,20.7,19.6,17.3],[17.6,20.7,17.5,17.3],[15.6,17.3,15.6,20.7]];
+
+/* ============ الأيقونات (Tabler مدمجة + Iconify من الشبكة) ============ */
+const IMG={},PEND=[];let FAILED=[];
+function mk(svg){const im=new Image();im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);PEND.push(im.decode().catch(()=>{}));return im}
+function icon(n,x,y,s,col,rot=0){if(!TB[n])return;const k='t|'+n+col;const im=IMG[k]||(IMG[k]=mk(`<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TB[n]}</svg>`));
+ if(!(im.complete&&im.naturalWidth))return;ctx.save();ctx.translate(x,y);if(rot)ctx.rotate(rot);ctx.drawImage(im,-s/2,-s/2,s,s);ctx.restore()}
+const IFY={};
+function cleanSvg(t){return t.replace(/<svg\b([^>]*)>/,(m,a)=>{const vb=(a.match(/viewBox="([^"]+)"/)||[])[1];const w=(a.match(/\swidth="([\d.]+)/)||[])[1],h=(a.match(/\sheight="([\d.]+)/)||[])[1];a=a.replace(/\s(width|height)="[^"]*"/g,'');if(!vb&&w&&h)a+=` viewBox="0 0 ${w} ${h}"`;return `<svg${a} width="192" height="192">`})}
+async function getIfy(n){const[p,i]=n.split(':');for(const h of['https://api.iconify.design','https://api.simplesvg.com','https://api.unisvg.com'])for(let a=0;a<2;a++){try{const c=new AbortController(),to=setTimeout(()=>c.abort(),6000);const r=await fetch(`${h}/${p}/${i}.svg`,{signal:c.signal});clearTimeout(to);const t=await r.text();if(r.ok&&t.trimStart().startsWith('<svg'))return cleanSvg(t)}catch(e){}}return null}
+async function loadIfy(list){await Promise.all(list.map(async n=>{const s=await getIfy(n);if(s)IFY[n]=s;else{FAILED.push(n);IFY[n]=FB[n]}}))}
+function ify(n,x,y,s,col=C.tp){const src=IFY[n];if(!src)return;const k='i|'+n+col;const im=IMG[k]||(IMG[k]=mk(src.replace(/currentColor/g,col)));if(im.complete&&im.naturalWidth)ctx.drawImage(im,x-s/2,y-s/2,s,s)}
+
+/* ============ أدوات الرسم ============ */
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),sm=x=>{x=clamp(x);return x*x*(3-2*x)},ease=t=>1-Math.pow(1-clamp(t),3),lerp=(a,b,t)=>a+(b-a)*t;
+function kf(a,t){if(t<=a[0][0])return a[0].slice(1);for(let i=0;i<a.length-1;i++)if(t<=a[i+1][0]){const k=sm((t-a[i][0])/(a[i+1][0]-a[i][0]));return a[i].slice(1).map((v,j)=>lerp(v,a[i+1][j+1],k))}return a[a.length-1].slice(1)}
+function rr(x,y,w,h,r,f,s,lw=1,dash){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(f){ctx.fillStyle=f;ctx.fill()}if(s){ctx.strokeStyle=s;ctx.lineWidth=lw;ctx.setLineDash(dash||[]);ctx.stroke();ctx.setLineDash([])}}
+function box(x,y,w,h,r,f,s){rr(x+.5,y+.5,w-1,h-1,Math.max(0,r-.5),f,s)} // border داخل الصندوق مثل CSS
+function T(s,x,y,sz,w,col,al='right',mw){ctx.font=`${w} ${sz}px ${FONT}`;ctx.fillStyle=col;ctx.direction='rtl';ctx.textAlign=al;ctx.textBaseline='middle';mw?ctx.fillText(s,x,y,mw):ctx.fillText(s,x,y)}
+const _tw={},_wr={};window.__setFont=f=>{FONT=f;for(const k in _tw)delete _tw[k];for(const k in _wr)delete _wr[k]};
+function tw(s,sz,w){const k=sz+'|'+w+'|'+s;let v=_tw[k];if(v===undefined){ctx.font=`${w} ${sz}px ${FONT}`;v=_tw[k]=ctx.measureText(s).width}return v}
+function wrap(s,mw,sz,w){const k=mw+'|'+sz+'|'+w+'|'+s;if(_wr[k])return _wr[k];const o=[];for(const para of s.split('\n')){let l='';for(const x of para.split(' ')){const q=l?l+' '+x:x;if(tw(q,sz,w)>mw&&l){o.push(l);l=x}else l=q}o.push(l)}return _wr[k]=o}
+const L1=new Path2D("m88.7 8.6c-4.5-4.1-9.7-6.6-17.1-7.5h-41.1c-6.5 0-12.5 1.6-17.3 5.5s-11.1 10.3-11.1 21.4v25.3c0 9.7 4.9 18.7 13.4 24.7l-3.1 12.3c-0.5 2.5 2.1 4.4 4.2 3.2l19.7-10.2h32.7c13.9 0 29-11.9 29-29.6v-25.5c-0.2-7.2-3.6-14.7-9.3-19.6zm4.1 44.2c0 13.1-9.8 24.9-24.4 24.9h-32.8c-0.5 0-0.9 0.2-1.3 0.4l-15.1 7.9 2.2-8.1c0.4-1.7-0.4-2.9-1.3-3.4-2.4-1.2-4.3-2.9-6.1-4.8-3.6-4.1-6-9.8-6.8-16.4v-24.7c0-11.7 10.4-22.1 21.4-22.1h42.5c10.6 0 21.7 9 21.7 22.3z"),L2=new Path2D("m67.7 51c-1.1 1.1-7.3 5.9-16.7 6.3s-15.9-4.4-17.8-6c-1.3-1.3-3-1.5-4.3-0.3-1.1 1.1-1.3 3.1 0.4 4.2 4.5 3.5 10.5 7.2 20.6 7.2 7.3 0 13.8-2.2 18.2-5.1 3.3-2.3 4-2.8 4-4.4 0-1.9-2.1-3.5-4.2-2.1z");
+function logo(x,y,s,c=C.tp){ctx.save();ctx.translate(x,y);ctx.scale(s/100,s/100);ctx.fillStyle=c;ctx.strokeStyle=c;ctx.lineJoin='round';ctx.lineCap='round';ctx.fill(L1);ctx.lineWidth=2.7;ctx.stroke(L1);ctx.fill(L2);ctx.lineWidth=2;ctx.stroke(L2);ctx.restore()}
+
+/* ============ الحالة العامة (مشتركة بين المشاهد الثلاثة) ============ */
+let CX=0,CY=0,DOWN=0,PRESS=9,OFFY=0,HOT=false,SCR=0,NOCAM=false,MODAL=false;
+function hv(x,y,w,h){if(MODAL)return false;const ok=CX>=x&&CX<=x+w&&CY>=y+OFFY&&CY<=y+h+OFFY;if(ok)HOT=true;return ok}
+function curStateOf(CUR,t){let i=0;while(i<CUR.length-2&&t>CUR[i+1][0])i++;const a=CUR[i],b=CUR[i+1],k=sm((t-a[0])/(b[0]-a[0]));let ps=9;for(let j=i;j>=0;j--){if(CUR[j][3]&&(j===0||!CUR[j-1][3])){ps=t-CUR[j][0];break}if(!CUR[j][3])break}return{x:lerp(a[1],b[1],k),y:lerp(a[2],b[2],k),d:a[3],ps}}
+const CRUMB=[['adjustments-horizontal','إعداد وتكوين الوكيل'],['message-chatbot','اختبار الوكيل'],['social','فتحات ربط القنوات'],['chart-bar','إحصائيات الأداء'],['inbox','صندوق الوارد (DMs)'],['users','العملاء (CRM)']];
+
+const NAV=[['إدارة الوكيل',[['adjustments-horizontal','إعدادات الوكيل والعملاء'],['message-chatbot','اختبار الوكيل']]],['قنوات الاتصال',[['social','فتحات ربط القنوات','3'],['chart-bar','الإحصائيات'],['inbox','صندوق الوارد (DMs)'],['users','العملاء (CRM)']]],['أدوات مساحة العمل',[['receipt-2','الأسعار والاشتراكات'],['settings','الإعدادات وتفاصيل الحساب'],['headset','الدعم والمساعدة']]]];
+function shell(a){ctx.fillStyle=C.bg;ctx.fillRect(-8,-8,W+16,H+16);OFFY=0;const sx=W-SBW,R=1526;
+ logo(1484,16,36);
+ box(1301,70,225,37,10,C.surf,C.bd);icon('search',1508.6,88.5,14,C.ts);T('بحث سريع...',1456,88.5,12.8,400,C.ts);rr(1312,79,30.7,19,6,C.bg,C.bd);T('⌘K',1327.4,88.8,10.9,700,C.ts,'center');
+ let y=136,idx=0;for(const[tt,its]of NAV){T(tt,R-6-1,y-11.5,10.88,800,C.tm);for(const it of its){const act=idx===a,hov=hv(1301,y,225,42);
+  if(act)box(1301,y,225,42,10,'#e7e5e4','#d6d3d1');else if(hov)box(1301,y,225,42,10,'rgba(0,0,0,.04)');
+  icon(it[0],1503,y+21,20.8,act||hov?C.tp:C.ts);T(it[1],1481,y+21.5,13.6,act?700:500,act||hov?C.tp:C.ts,'right',it[2]?1481-1312-(tw(it[2],11.52,700)+18)-8:200);
+  if(it[2]){const w=tw(it[2],11.52,700)+18;box(1312,y+11,w,20,10,C.gBg,C.gBd);T(it[2],1312+w/2,y+21.4,11.52,700,C.gDark,'center')}y+=46;idx++}
+  y+=17+13}// المسافة بين المجموعات
+ box(1301,798,225,52,14,C.surf,C.bd);ctx.beginPath();ctx.arc(1500,824,17,0,7);ctx.fillStyle='#e7e5e4';ctx.fill();T('م',1500,824.5,13.6,800,C.tp,'center');T('متجر النور',1475,818,13.12,700,C.tp);T('مالك المتجر',1475,831.5,10.88,400,C.tm);icon('logout',1319,824,16,C.tm);
+ rr(1243,9,36,36,10,C.surf,C.bd);icon('layout-sidebar-right-collapse',1261,27,20.8,C.tp);const cr=CRUMB[a];icon(cr[0],1223.4,27,15.2,C.tp);T(cr[1],1207.8,27.5,15.2,700,C.tp);
+ box(16,9,36,36,10,C.surf,C.bd);icon('headset',34,27,20,C.tp);
+ box(4,54,1283,804,20,C.surf,C.bd)}
+const SEG1=(()=>{
+const TAB=[0,12.1],END=29;
+const CUR=[[0,900,520,0],[.9,900,520,0],[1.7,1400,157,0],[1.85,1400,157,1],[2.1,1400,157,0],[3.1,943,172,0],[3.9,1059,172,0],[4.7,700,350,0],
+ [5.3,640,460,0],[5.4,640,460,1],[7.3,640,330,1],[7.4,640,330,0],[7.8,640,520,0],[7.9,640,520,1],[9.2,640,420,1],[9.3,640,420,0],
+ [10.3,1041,722,0],[10.8,1041,722,0],[10.85,1041,722,1],[11.1,1041,722,0],[11.9,1400,211,0],[12.1,1400,211,1],[12.4,1400,211,0],
+ [13.4,823,343,0],[14.3,823,343,0],[15.0,467,343,0],[15.15,467,343,1],[15.4,467,343,0],[16.6,700,520,0],[19.5,600,775,0],[19.95,600,775,1],[20.2,600,775,0],
+ [23.0,287.5,803,0],[23.15,287.5,803,1],[23.45,287.5,803,0],[25.6,880,844,0],[31.5,880,844,0]];
+const S0=[[0,0],[5.4,0],[7.3,170],[7.9,170],[9.2,305],[END,305]];
+const ZM=[[0,1,768,432],[2.2,1,768,432],[2.9,1.5,1000,288],[4.4,1.5,1000,288],[5.2,1.15,700,432],[9.3,1.15,700,432],[10.0,1.7,1020,640],[11.3,1.7,1020,640],[11.9,1,768,432],[13.2,1,768,432],[13.7,1.4,640,330],[15.6,1.4,640,330],[16.6,1,768,432],[19.5,1,768,432],[20.1,1.4,645,556],[23.8,1.4,645,556],[24.8,1,768,432],[25.8,1.55,780,560],[31.7,1.55,780,560],[33.0,1,768,432]];
+const PROMPT='أنت مساعد مبيعات ذكي لمتجر النور للعطور. تكلم بلهجة مصرية ودودة ومختصرة، واعرض الأسعار من قائمة المنتجات فقط. لو العميل سأل عن التوصيل، التوصيل للقاهرة والجيزة خلال يومين بـ 45 جنيه. قبل تأكيد أي طلب اسأل عن الاسم الكامل ورقم الموبايل والعنوان بالتفصيل، وبعد التأكيد سجّل البيانات في الـ CRM.';
+const btnW=(txt,sz=13.12)=>2+36+16.8+8+tw(txt,sz,700);
+function btnO(txt,ic,x,y,h,r=14,sz=13.12){const w=btnW(txt,sz),hov=hv(x,y,w,h);box(x,y,w,h,r,'#fff',hov?'#d6d3d1':C.bd);icon(ic,x+w-19-8.4,y+h/2,16.8,C.ts);T(txt,x+w-19-16.8-8,y+h/2+.5,sz,700,C.tp);return w}
+function secTitle(ic,txt,yTop,x2=1115.5){ify(ic,x2-9.6,yTop+9.5,19.2);T(txt,x2-19.2-8,yTop+10,16,800,C.tp)}
+/* ============ التبويب 1: إعدادات الوكيل (إحداثيات مطلقة عند scroll=0) ============ */
+function page0(t){const R=1115.5,L=175.5,cw=940;
+ T('عقل الوكيل',R,89,20.8,800,C.tp);T('تعديل التعليمات، إدارة معارف المتجر، وضبط حقول تفريغ طلبات العملاء',R,115.5,13.12,400,C.tm);
+ btnO('إعادة الإعداد من البداية','refresh',L,83,37);
+ // chips
+ const t1='تعليمات الوكيل',w1=2+28+15+6+tw(t1,12.48,700),x1=R-w1;hv(x1,156,w1,33);box(x1,156,w1,33,16.5,C.tp,C.tp);icon('message-2-bolt',R-15-7.5,172.5,15,'#fff');T(t1,R-15-15-6,172.8,12.48,700,'#fff');
+ const t2='بيانات العملاء',w2=2+28+15+6+tw(t2,12.48,700),x2=x1-8-w2,c2=hv(x2,156,w2,33);box(x2,156,w2,33,16.5,'#fff',c2?'#d6d3d1':C.bd);icon('clipboard-list',x2+w2-15-7.5,172.5,15,c2?C.tp:C.ts);T(t2,x2+w2-15-15-6,172.8,12.48,700,c2?C.tp:C.ts);
+ // قسم التعليمات
+ secTitle('solar:chat-square-code-bold-duotone','تعليمات الوكيل الكاملة',223);
+ wrap('شخصية الوكيل ومعرفته بمتجرك في نص واحد مدمج — التعديل بيتحفظ لحد ما تضغط زرار الحفظ تحت.',441.3,12.8,400).forEach((l,i)=>T(l,R,256.5+i*21.1,12.8,400,C.ts));
+ box(L,306.2,cw,240,14,C.f9,C.bd);wrap(PROMPT,cw-38,14.4,400).forEach((l,i)=>T(l,R-19,336.2+i*25.92,14.4,400,C.tp));
+ const wc=PROMPT.split(/\s+/).length;T(wc+' كلمة',L+4,559.2,11.52,400,C.tm,'left');
+ // dropzone
+ ctx.save();ctx.beginPath();ctx.roundRect(L+.5,584.7,cw-1,182,13.5);ctx.strokeStyle=C.bd;ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.restore();rr(L,584.2,0,0,0);
+ ctx.beginPath();ctx.arc(645.5,633.2,22,0,7);ctx.fillStyle=C.f9;ctx.fill();ify('solar:cloud-upload-bold-duotone',645.5,633.2,22.4);
+ T('أضف ملف جديد لمعرفة الوكيل',645.5,673.2,13.92,700,C.tp,'center');T('يُضاف تلخيصه تلقائياً بالذكاء الاصطناعي لنص التعليمات أعلاه',645.5,700.2,12,400,C.tm,'center');
+ {const fs=['PDF','CSV','TXT','DOCX'],ws=fs.map(f=>2+14+tw(f,10.4,700)),tot=ws.reduce((a,b)=>a+b,0)+5*3;let bx=645.5+tot/2;fs.forEach((f,i)=>{bx-=ws[i];box(bx,723.2,ws[i],17,4,C.f9,C.bd);T(f,bx+ws[i]/2,732,10.4,700,C.ts,'center');bx-=5})}
+ // حقول CRM
+ secTitle('solar:clipboard-list-bold-duotone','بيانات العميل المطلوب جمعها',819.2);T('هي نفس الأعمدة اللي هتظهر في جدول الطلبات تحت — عدّل، احذف، أو أضف.',R,852.7,12.8,400,C.ts);
+ let px=R;for(const f of['الاسم الكامل','رقم الموبايل','العنوان بالتفصيل','المحافظة','المنتج المطلوب','الكمية']){const w=12+tw(f,12.96,700)+8+13.6+12+2;if(px-w<L){break}box(px-w,884.8,w,31,10,C.f9,C.bd);T(f,px-13,900.8,12.96,700,C.tp);const xh=hv(px-w+10,892,16,16);icon('x',px-w+12+6.8,900.8,13.6,xh?'#dc2626':C.tm);px-=w+8}
+ const aw=btnW('إضافة');box(L+aw+8,937.3,R-L-aw-8,39,10,'#fff',C.bd);T('اسم حقل جديد (مثال: تاريخ التسليم)',R-15,957.3,13.76,300,C.tm);btnO('إضافة','plus',L,937.3,39,14);
+ // حفظ
+ const svt='حفظ الإعدادات',sw=52+14.08+8+tw(svt,14.08,700),sx=R-sw,sh=hv(sx,1008.3,sw,40);box(sx,1008.3,sw,40,10,C.tp);icon('device-floppy',R-26-7.04,1028.3,14.08,'#fff');T(svt,R-26-14.08-8,1028.8,14.08,700,'#fff');
+ // سجل العملاء
+ icon('users',R-8,1090,16,C.tp);T('سجل بيانات وطلبات العملاء',R-16-8,1090,16,800,C.tp);T('اتنقل لتبويب "العملاء (CRM)" — فيه بحث وفلاتر وتصدير Excel وتفاصيل كل عميل.',R,1113.8,12.8,400,C.ts);
+ const tt='افتح العملاء (CRM)',tbw=2+28+12.64+6+tw(tt,12.64,700),bh=hv(L,1080.3,tbw,33);box(L,1080.3,tbw,33,10,C.tp,C.tp);icon('users',L+tbw-15-6.32,1096.8,12.64,'#fff');T(tt,L+tbw-15-12.64-6,1097.3,12.64,700,'#fff');ctx.globalAlpha=1}
+/* ============ التبويب 2: اختبار الوكيل ============ */
+const STARTERS=[['truck-delivery','مصاريف ومدة التوصيل','فحص تسعير المحافظات وسرعة تسليم الشحنات','#ebf3ff','#1d4ed8',651.5,307.8],['shopping-cart-check','تسجيل وحجز طلب جديد','اختبار التقاط بيانات العميل وتفريغها في الـ CRM',C.gBg,'#4d7c0f',295.5,307.8],['rotate-2','سياسة الاستبدال والضمان','التأكد من التزام الوكيل بمدد وشروط المتجر',C.oBg,'#c2410c',651.5,389.8],['credit-card','طرق الدفع والتحويل','فودافون كاش، InstaPay، والدفع عند الاستلام','#f7ebff','#7e22ce',295.5,389.8]];
+const U1='عايز أطلب من عندكم، أعمل إيه وإيه البيانات المطلوبة؟';
+const A1='أهلاً بيك في متجر النور! يسعدنا نخدمك. عشان نسجل طلبك محتاج منك البيانات دي:\n١) الاسم الكامل\n٢) رقم الموبايل\n٣) العنوان بالتفصيل (المحافظة والمنطقة)\n٤) المنتج والكمية المطلوبة\n٥) أي ملاحظات إضافية على الطلب\nوبعد ما تبعتهم هأكدلك الإجمالي مع مصاريف الشحن وطريقة الدفع.';
+const U2='اسمي أحمد محمود، رقم الموبايل 01001234567، العنوان مدينة نصر - القاهرة، وعايز عود الليل عدد 1';
+const A2='تمام يا أحمد! سجلت طلبك بنجاح:\n• المنتج: عود الليل × 1 — 850 جنيه\n• الشحن للقاهرة: 45 جنيه (خلال يومين)\n• الإجمالي: 895 جنيه\n• العنوان: مدينة نصر - القاهرة\nالدفع عند الاستلام أو فودافون كاش أو InstaPay.\nهيوصلك تأكيد على الموبايل خلال دقائق، تحب أأكد الطلب دلوقتي؟';
+const tsent1=15.25-TAB[1],tsent2=23.4-TAB[1];
+function page1(tl){const cx=645.5,sentA=tl>tsent1,sentB=tl>tsent2;
+ // شاشة الترحيب
+ const wa=sentA?1-ease((tl-tsent1)/.35):1;
+ if(wa>0){ctx.save();ctx.globalAlpha=wa;logo(619.5,139,52);T('جرّب ردود وكيلك على العملاء',cx,219,20.8,800,C.tp,'center');
+  ['تحدث معه كما سيتحدث عميلك الحقيقي، لاختبار فهمه للأسعار، سياسات الشحن،','واستخراج بيانات الطلبات.'].forEach((l,i)=>T(l,cx,248.2+i*22.4,13.6,400,C.ts,'center'));
+  STARTERS.forEach(s=>{const h=hv(s[5],s[6],344,70);box(s[5],s[6],344,70,14,h?C.f9:'#fff',h?'#d6d3d1':C.bd);rr(s[5]+344-17-40,s[6]+15,40,40,10,s[3]);icon(s[0],s[5]+344-17-20,s[6]+35,20,s[4]);
+   T(s[1],s[5]+275,s[6]+23,13.76,700,C.tp,'right',258);icon('message-plus',s[5]+17+8.4,s[6]+23,16.8,h?C.tp:C.tm);T(s[2],s[5]+275,s[6]+43.4,11.84,400,C.tm,'right',258)});ctx.restore()}
+ // المحادثة
+ if(sentA){const Lx=255.5,Rx=1035.5;let y=79;ctx.save();ctx.translate(0,-chatScroll(tl));
+  const msg=(who,txt,t0,speed)=>{const age=tl-t0;if(age<0)return;const a=ease(age/.25);ctx.save();ctx.globalAlpha=a;
+   if(who==='u'){const ls=wrap(txt,577-36,14.4,400),w=Math.min(577,Math.max(...ls.map(l=>tw(l,14.4,400)))+36),h=ls.length*23.76+24;ctx.beginPath();ctx.roundRect(Lx,y,w,h,[20,20,20,4]);ctx.fillStyle='#f0eeeb';ctx.fill();ls.forEach((l,i)=>T(l,Lx+w-18,y+12+11.88+i*23.76,14.4,400,C.tp));y+=h+22;ctx.restore();return}
+   // وكيل
+   const typedStart=t0+.9;if(age<.9){const x0=Rx-30-12;logo(Rx-30,y+2,30);rr(Rx-30-12-48,y+4,48,26,13,C.f9,C.bds);box(Rx-30-12-48,y+4,48,26,13,C.f9,C.bds);for(let i=0;i<3;i++){const dy=-4*Math.max(0,Math.sin((tl*5.7-i*.8)));ctx.beginPath();ctx.arc(Rx-30-12-14-i*10,y+17+dy,2.5,0,7);ctx.fillStyle=C.tm;ctx.fill()}y+=44;ctx.restore();return}
+   const n=Math.floor(clamp((tl-typedStart)/(txt.length/speed))*txt.length),ls=wrap(txt.slice(0,n),628,14.72,400);logo(Rx-30,y+2,30);ls.forEach((l,i)=>T(l,Rx-30-12,y+2+13.25+i*26.5,14.72,400,C.tp));y+=Math.max(34,ls.length*26.5+4)+22;ctx.restore()};
+  msg('u',U1,tsent1,1);msg('a',A1,tsent1+.55,46);
+  if(sentB){msg('u',U2,tsent2,1);msg('a',A2,tsent2+.55,42)}
+  ctx.restore()}
+ // الفوتر العائم
+ const g=ctx.createLinearGradient(0,683,0,857);g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.15,'rgba(255,255,255,.7)');g.addColorStop(.42,'rgba(255,255,255,.98)');g.addColorStop(1,'#fff');ctx.fillStyle=g;ctx.fillRect(5,683,1281,174);
+ const nt='محادثة جديدة',nw=2+26+12.32+6+tw(nt,12.32,700),nx=1035.5-nw,nb=hv(nx,702,nw,26);box(nx,702,nw,26,13,nb?C.f9:'#fff',nb?'#d6d3d1':C.bd);icon('message-plus',nx+nw-14-6.16,715,12.32,C.tp);T(nt,nx+nw-14-12.32-6,715.5,12.32,700,C.tp);
+ box(nx-8-28,701,28,28,14,'#fff',C.bd);icon('rotate-clockwise',nx-8-14,715,13.6,C.tm);
+ ctx.save();ctx.shadowColor='rgba(28,25,23,.06)';ctx.shadowBlur=26;ctx.shadowOffsetY=6;rr(255.5,737,780,92,20,'#fff');ctx.restore();box(255.5,737,780,92,20,'#fff',C.bd);
+ const ct=CT(tl);if(ct.txt)wrap(ct.txt,740,14.4,400).forEach((l,i)=>T(l,1020.5,762+i*26,14.4,400,C.tp));else T('اسأل الوكيل أي شيء لاختبار دقته...',1020.5,762,14.4,300,C.tm);
+ if(ct.txt&&ct.caret&&Math.floor(tl*2.2)%2===0){const lines=wrap(ct.txt,740,14.4,400),lw=tw(lines[lines.length-1],14.4,400);ctx.fillStyle=C.tp;ctx.fillRect(1020.5-lw-2,752,1.4,20)}
+ icon('paperclip',1004.5,803,18.4,C.tm);ctx.beginPath();ctx.arc(287.5,803,17,0,7);ctx.fillStyle=C.tp;ctx.globalAlpha=1;ctx.fill();icon('arrow-forward',287.5,803,17.6,'#fff');
+ T('النماذج المدعومة:',1031.5,844,11.84,600,C.tm);['logos:google-gemini','logos:openai-icon','logos:claude-icon','logos:meta-icon'].forEach((n,i)=>{const cxl=1031.5-tw('النماذج المدعومة:',11.84,600)-9-8.4-i*24.8,hh=hv(cxl-8.4,835.6,16.8,16.8);ctx.save();if(hh){ctx.translate(cxl,844);ctx.scale(1.18,1.18);ctx.translate(-cxl,-844)}ify(n,cxl,844,16.8,'#000');ctx.restore()});
+ T('Enter للإرسال المباشر • Shift + Enter لسطر جديد',259.5,844,11.2,400,C.tm,'left')}
+function aH(txt,t0,sp,tl){const age=tl-t0;if(age<0)return 0;if(age<.9)return 44;const n=Math.floor(clamp((tl-t0-.9)/(txt.length/sp))*txt.length);return Math.max(34,wrap(txt.slice(0,n),628,14.72,400).length*26.5+4)+22}
+function uH(txt,t0,tl){return tl<t0?0:wrap(txt,577-36,14.4,400).length*23.76+24+22}
+function chatEnd(tl){return 79+uH(U1,tsent1,tl)+aH(A1,tsent1+.55,46,tl)+uH(U2,tsent2,tl)+aH(A2,tsent2+.55,42,tl)}
+function chatScroll(tl){let s=0;for(let k=0;k<6;k++)s+=chatEnd(tl-k*.07);return Math.max(0,s/6-560)}
+function CT(tl){// نص صندوق الكتابة الثاني
+ const a=20.3-TAB[1],b=22.7-TAB[1],s=tsent2;if(tl<a||tl>=s)return{txt:'',caret:false};const n=Math.floor(clamp((tl-a)/(b-a))*U2.length);return{txt:U2.slice(0,n),caret:true,ready:n>=U2.length}}
+return{CUR,ZM,S0,page0,page1,TAB1:TAB[1]}})();
+const SEG2=(()=>{
+const TAB=[0,17.6],END=34.5,CLICK=1.85,EN=CLICK;   // EN: لحظة الضغط على القائمة الجانبية = بداية ظهور الصفحة
+const CUR=[[1.7,1380,274,0],[1.85,1380,274,1],[2.1,1380,274,0],[3.2,216,101,0],[3.6,216,101,1],[3.85,216,101,0],[5.6,910,214,0],[6.4,910,214,0],[7.0,910,214,1],[7.25,910,214,0],[8.6,223,203,0],[9.3,223,203,0],[9.9,640,560,0],[10.0,640,560,1],[12.6,640,430,1],[12.7,640,430,0],[12.95,640,580,0],[13.0,640,580,1],[15.2,640,420,1],[15.3,640,420,0],[16.2,249,267,0],[16.9,249,267,0],[17.4,1380,320,0],[17.6,1380,320,1],[17.85,1380,320,0],[19.0,745,200,0],[22.0,830,400,0],[24.6,700,430,0],[25.4,340,400,0],[27.0,340,440,0],[28.4,312,97,0],[28.8,312,97,1],[29.05,312,97,0],[31.2,189,97,0],[31.6,189,97,1],[31.85,189,97,0],[33.0,500,300,0],[33.3,500,300,0],[34.4,1400,371,0]];
+const S2=[[0,0],[10.0,0],[12.6,170],[13.0,170],[15.2,305],[END,305]];
+const ZM=[[2.4,1,768,432],[3.0,1.7,260,130],[4.9,1.7,260,130],[5.7,1.45,880,215],[8.0,1.45,880,215],[9.0,1,768,432],[9.8,1,768,432],[10.6,1.15,700,432],[15.0,1.15,700,432],[15.8,1.6,330,300],[17.0,1.6,330,300],[17.9,1,768,432],[19.0,1,768,432],[19.7,1.55,880,165],[21.6,1.55,880,165],[22.3,1.45,830,420],[24.8,1.45,830,420],[25.4,1.7,340,430],[27.1,1.7,340,430],[27.8,1.6,480,260],[32.4,1.6,480,260],[33.2,1,768,432],[34.5,1,768,432]];
+const PL={instagram:['skill-icons:instagram','إنستغرام (Instagram)','أتمتة رسائل الـ DMs الخاصة والتعليقات على المنشورات والريلز','ربط إنستغرام'],whatsapp:['logos:whatsapp-icon','واتساب (WhatsApp Business)','ربط سحابي عبر Cloud API أو مسح كود QR لتطبيق الأعمال','ربط واتساب'],facebook:['logos:facebook','فيسبوك (Facebook Messenger)','إدارة رسائل صفحات فيسبوك والرد التلقائي على التعليقات','ربط فيسبوك'],tiktok:['logos:tiktok-icon','تيك توك (TikTok Business)','الرد السريع على الرسائل والدردشات المباشرة لحسابات الأعمال','ربط تيك توك'],telegram:['logos:telegram','تيليجرام (Telegram Bot)','ربط فوري ومباشر للبوت باستخدام Bot Token من BotFather','ربط تيليجرام'],gmail:['logos:google-gmail','جيميل (Gmail)','الرد الذكي والأتمتة الكاملة للرسائل واستفسارات البريد الإلكتروني','قريباً']};
+const SL=[{p:'instagram',name:'nour.store',id:'17841400123456789'},{p:'telegram',name:'NourStoreBot',id:'6012345678'},{p:'whatsapp',name:'+20 100 123 4567',id:'109876543210'}];
+function connCard(s,i,y,t){const X=155.5,Wc=980,txtW=Math.min(260,tw(s.name,15.68,800)),tag='الفتحة #'+(i+1),tagW=2+14+tw(tag,11.04,700),idt='ID: '+s.id,chipW=2+14+tw(idt,11.36,400)+4+12,
+ identW=Math.max(220,46+14+Math.max(txtW,tagW+6+chipW)),bt='متصل ونشط',bw=24+11.84+5+tw(bt,11.84,800),dt='فصل القناة',dw=2+24+5+12.8+tw(dt,12.8,700),actW=bw+12+dw,fw=Wc-2-44-identW-actW-36;
+ const chips=[['message-chatbot','الرد في الـ DMs']].concat(s.p==='instagram'?[['messages','الرد على التعليقات']]:[]).concat([['user-share','التحويل المباشر'],['clipboard-list','التسجيل في الـ CRM']]);
+ const rows=[[]];let cx=0;chips.forEach(c=>{const w=2+20+13.6+5+tw(c[1],11.84,600);if(cx>0&&cx+w>fw){rows.push([]);cx=0}rows[rows.length-1].push([c,w]);cx+=w+6});
+ const featH=13+5+rows.length*24+(rows.length-1)*6,H=Math.max(46,featH,31)+38,cy=y+H/2;
+ const a=ease((t-EN-.15-i*.12)/.45);ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*14);
+ box(X,y,Wc,H,14,'#fff',hv(X,y,Wc,H)?'#d6d3d1':C.bd);
+ box(1066.5,cy-23,46,46,10,C.bg,C.bds);ify(PL[s.p][0],1089.5,cy,27.2);
+ if(s.p==='whatsapp'){ctx.font='800 15.68px '+FONT;ctx.fillStyle=C.tp;ctx.direction='ltr';ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillText(s.name,1052.5,cy-10)}else T(s.name,1052.5,cy-10,15.68,800,C.tp,'right',260);
+ const tx=1052.5-tagW;box(tx,cy+2,tagW,17,4,C.bg,C.bds);T(tag,tx+tagW-8,cy+11,11.04,700,C.tm);
+ const cxr=tx-6,cl=cxr-chipW,ch=hv(cl,cy+2.5,chipW,16);box(cl,cy+2.5,chipW,16,4,C.bg,ch?C.bd:C.bds);T(idt,cxr-8,cy+11,11.36,400,ch?C.tp:C.tm,'right');
+ const copied=t>7.0&&t<8.4;icon(copied?'check':'copy',cl+8+6,cy+10.5,12,ch||copied?C.tp:C.tm);
+ // المميزات
+ const fr=1112.5-identW-18,fy0=cy-featH/2;icon('bolt',fr-5.6,fy0+6.5,11.2,C.tm);T('المميزات النشطة على القناة:',fr-11.2-4,fy0+6.8,11.2,700,C.tm);
+ rows.forEach((r,ri)=>{let rx=fr;r.forEach(([c,w])=>{const ry=fy0+18+ri*30;box(rx-w,ry,w,24,6,C.bg,C.bds);icon(c[0],rx-10-6.8,ry+12,13.6,C.tp);T(c[1],rx-10-13.6-5,ry+12.4,11.84,600,C.ts);rx-=w+6})});
+ // الإجراءات
+ const dh=hv(178.5,cy-15.5,dw,31);box(178.5,cy-15.5,dw,31,10,dh?'#fef2f2':null,dh?'#fecaca':null);icon('unlink',178.5+dw-1-12-6.4,cy,12.8,'#dc2626');T(dt,178.5+dw-1-12-12.8-5,cy+.4,12.8,700,'#dc2626');
+ const bx=178.5+dw+12;box(bx,cy-11,bw,22,11,C.gBg);icon('check',bx+bw-12-5.9,cy,11.84,C.gDark);T(bt,bx+bw-12-11.84-5,cy+.4,11.84,800,C.gDark);
+ ctx.restore();return H}
+function subCard(y,key,t,i){const[ic,name,desc,btn]=PL[key],soon=key==='gmail',x=176.5,w=938,a=ease((t-EN-.45-i*.06)/.4);ctx.save();ctx.globalAlpha*=a*(soon?.88:1);
+ box(x,y,w,64,14,soon?C.f9:'#fff',C.bd);box(1059.5,y+13,38,38,10,C.bg,C.bds);ify(ic,1078.5,y+32,23.2);
+ const bwid=soon?2+32+tw(btn,12.8,700):32+12.8+6+tw(btn,12.8,700),bx=x+17,hov=!soon&&hv(bx,y+17.5,bwid,29);
+ T(name,1047.5,y+24.5,14.08,800,C.tp);if(soon){const pw=2+14+tw('قريباً',10.72,700)-2+2,px=1047.5-tw(name,14.08,800)-8;rr(px-pw,y+16.5,pw,16,8,C.bd);T('قريباً',px-pw/2,y+24.8,10.72,700,C.ts,'center')}
+ T(desc,1047.5,y+41.5,11.84,400,C.tm,'right',1047.5-(bx+bwid+14));
+ if(soon){box(bx,y+17.5,bwid,29,10,'#fff',C.bd);T(btn,bx+bwid/2,y+32.2,12.8,700,C.tm,'center')}else{ctx.globalAlpha*=hov?.88:1;rr(bx,y+17.5,bwid,29,10,C.tp);icon('link',bx+bwid-16-6.4,y+32,12.8,'#fff');T(btn,bx+bwid-16-12.8-6,y+32.2,12.8,700,'#fff')}
+ ctx.restore()}
+function pageChannels(t){const R=1135.5,L=155.5;
+ icon('social',R-9.76,88.5,19.52,C.tp);T('فتحات وقنوات الربط الذكية',R-19.52-10,88.8,19.52,800,C.tp);
+ T('اربط حساباتك في مختلف المنصات للرد الفوري والأتمتة الشاملة وفق الفتحات المخصصة لاشتراكك',R,114.3,13.28,400,C.ts);
+ const st='تحديث القنوات',sw=2+32+13.12+7+tw(st,13.12,700),sh=hv(L,85.3,sw,31);box(L,85.3,sw,31,10,C.f9,sh?'#c4c1bd':C.bd);
+ const ang=t>3.6&&t<4.95?sm((t-3.6)/1.3)*6.283:0;icon('refresh',L+sw-1-16-6.56,100.8,13.12,C.tp,ang);T(st,L+sw-1-16-13.12-7,101.3,13.12,700,C.tp);
+ let y=148.6;SL.forEach((s,i)=>{y+=connCard(s,i,y,t)+14});
+ // الفتحة الفارغة
+ const a=ease((t-EN-.4)/.45);ctx.save();ctx.globalAlpha*=a;
+ const eh=3+40+36+14+6*64+5*8;rr(L+.75,y+.75,979.5,eh-1.5,19.25,C.f9);ctx.beginPath();ctx.roundRect(L+.75,y+.75,979.5,eh-1.5,19.25);ctx.strokeStyle='#d6d3d1';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+ box(1078.5,y+21,36,36,10,'#fff',C.bd);icon('plug',1096.5,y+39,18.4,C.tm);
+ T('فتحة ربط فارغة (#4)',1068.5,y+30,14.72,800,C.tp);T('اختر المنصة واضغط على زر الربط الخاص بها للبدء فوراً:',1068.5,y+49,11.84,400,C.tm);
+ const tg=2+18+tw('#4',11.04,700);box(176.5,y+29,tg,20,4,'#fff',C.bds);T('#4',176.5+tg/2,y+39.4,11.04,700,C.tm,'center');
+ ctx.restore();
+ ['instagram','whatsapp','facebook','tiktok','telegram','gmail'].forEach((k,i)=>subCard(y+71+i*72,k,t,i))}
+
+/* ============ الإحصائيات ============ */
+const DS={30:{tot:[5920,5710,210,3.2],pl:[2480,1730,980,520,210],n:30,base:150,f:'09/01',l:'09/30'},7:{tot:[1480,1431,49,2.9],pl:[640,430,240,120,50],n:7,base:190,f:'09/24',l:'09/30'},90:{tot:[16840,16210,630,3.4],pl:[7100,4900,2800,1400,640],n:90,base:170,f:'07/03',l:'09/30'}};
+const PLN=[['إنستغرام','#E1306C'],['واتساب','#25D366'],['تيليجرام','#26A5E4'],['فيسبوك','#1877F2'],['تيك توك','#ff0050']];
+const dailyOf=(n,b)=>Array.from({length:n},(_,i)=>Math.max(5,Math.round(b*(.62+.28*Math.sin(i*6.28/(n/3.2)+.6)+.55*i/n+.03*Math.sin(i*1.3)))));
+const RC=[[28.8,7],[31.6,90]];
+function rangeInfo(t){let cur=30,prev=30,tc=-99;for(const[c,r]of RC)if(t>=c){prev=cur;cur=r;tc=c}return{cur,prev,tc}}
+function pageStats(t,tl){const R=1135.5,L=155.5,ri=rangeInfo(t),D=DS[ri.cur],P=DS[ri.prev],sw=ri.tc>0?ease((t-ri.tc)/.8):ease((tl-.3)/1.3),cp=ri.tc>0?ease((t-ri.tc)/1.3):ease((tl-.6)/1.7),bp=ri.tc>0?ease((t-ri.tc)/1.0):ease((tl-1.0)/1.4);
+ const base=ri.tc>0?P:{tot:[0,0,0,0],pl:[0,0,0,0,0]};
+ T('إحصائيات الأداء',R,88.5,19.2,800,C.tp);T('نظرة شاملة على أداء الوكيل عبر كل القنوات المتصلة',R,109.5,13.12,400,C.ts);
+ // مفتاح المدى
+ const rs=[[7,'7 أيام'],[30,'30 يوم'],[90,'90 يوم']],ws=rs.map(r=>24+tw(r[1],12.48,700)),tot=ws.reduce((a,b)=>a+b,0)+8+8;box(L,79.5,tot,35,10,C.bg);
+ let bx=L+tot-4;rs.forEach((r,i)=>{bx-=ws[i];const on=r[0]===ri.cur,h=hv(bx,83.5,ws[i],27);if(on)rr(bx,83.5,ws[i],27,6,'#fff');T(r[1],bx+ws[i]/2,97.4,12.48,700,on||h?C.tp:C.ts,'center');bx-=4});
+ // الكروت
+ const labs=['إجمالي الرسائل','ردود ناجحة','ردود فشلت','متوسط زمن الرد'],cw=234.5;
+ labs.forEach((lb,i)=>{const x=R-cw-i*(cw+14),a=ease((tl-.1-i*.1)/.45);ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*14);box(x,153,cw,87,20,'#fff',C.bd);ctx.lineWidth=1;
+  T(lb,x+cw-19.5,177.5,12.48,600,C.ts);const v=lerp(base.tot[i],D.tot[i],sw),col=i===1?C.gDark:i===2&&D.tot[2]>0?'#dc2626':C.tp,rx=x+cw-19.5;
+  if(i===3){const s=v.toFixed(1);T(s,rx,207,27.2,800,col);T(' ث',rx-tw(s,27.2,800),211.5,13.6,600,col)}
+  else{const s=Math.round(v).toLocaleString('en-US');T(s,rx,207,27.2,800,col);if(i===1){const rate=Math.round(v/Math.max(1,lerp(base.tot[0],D.tot[0],sw))*100);T('('+rate+'%)',rx-tw(s,27.2,800)-7,211.5,13.6,600,col)}}
+  ctx.restore()});
+ // اللوحات
+ const pa=ease((tl-.4)/.5);ctx.save();ctx.globalAlpha*=pa;ctx.translate(0,(1-pa)*14);box(541,276,594.5,269.5,20,'#fff',C.bd);box(155.5,276,371.5,269.5,20,'#fff',C.bd);
+ T('الرسائل خلال الفترة',1116.5,303,14.4,800,C.tp);T('التوزيع حسب المنصة',508,303,14.4,800,C.tp);
+ const dd=dailyOf(D.n,D.base),mx=Math.max(1,...dd),pad=24,vw=600,vh=200,stepX=dd.length>1?(vw-pad*2)/(dd.length-1):0,pts=dd.map((v,i)=>[pad+i*stepX,vh-pad-(v/mx)*(vh-pad*2)]);
+ ctx.save();ctx.translate(560,325);ctx.scale(556.5/600,185.5/200);ctx.beginPath();ctx.rect(0,0,600*cp,200);ctx.clip();
+ ctx.beginPath();ctx.moveTo(pad,vh-pad);pts.forEach(p=>ctx.lineTo(p[0],p[1]));ctx.lineTo(vw-pad,vh-pad);ctx.closePath();ctx.globalAlpha*=.7;ctx.fillStyle='#ebfcd2';ctx.fill();ctx.globalAlpha/=.7;
+ ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.strokeStyle='#143823';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();ctx.restore();
+ ctx.beginPath();ctx.moveTo(560+pad*556.5/600,325+(vh-pad)*185.5/200);ctx.lineTo(560+(vw-pad)*556.5/600,325+(vh-pad)*185.5/200);ctx.strokeStyle=C.bd;ctx.lineWidth=1;ctx.stroke();
+ T(D.f,1116.5,520.5,11.52,400,C.tm);T(D.l,560,520.5,11.52,400,C.tm,'left');
+ // المنصات
+ const pm=Math.max(1,...D.pl);PLN.forEach((p,i)=>{const y=325+i*40,v=Math.round(lerp(base.pl[i],D.pl[i],sw)),pct=D.pl[i]/pm,ppb=ri.tc>0?(base.pl[i]/Math.max(1,Math.max(...P.pl))):0,pc=lerp(ppb,pct,bp);
+  T(p[0],508,y+7.5,12.8,400,C.tp);T(v.toLocaleString('en-US'),174.5,y+7.5,12.8,700,C.tp,'left');rr(174.5,y+20,333.5,8,4,C.bg);if(pc>0.003)rr(508-333.5*pc,y+20,333.5*pc,8,4,p[1])});
+ ctx.restore()}
+return{CUR,ZM,S2,pageChannels,pageStats,TAB1:TAB[1],CLICK}})();
+const SEG3=(()=>{
+/* ============ الحالة والسيناريو (صندوق الوارد + العملاء) ============ */
+const T1=23.5,TAB=[0,T1],END=T1+19.8;
+const CUR=[[0,1400,371,1],[.25,1400,371,0],
+ [1.4,1091,154,0],[1.55,1091,154,1],[1.8,1091,154,0],
+ [2.75,958,154,0],[2.9,958,154,1],[3.15,958,154,0],
+ [4.1,828,154,0],[4.25,828,154,1],[4.5,828,154,0],
+ [5.45,698,154,0],[5.6,698,154,1],[5.85,698,154,0],
+ [6.8,562,154,0],[6.95,562,154,1],[7.2,562,154,0],
+ [8.35,1209,154,0],[8.5,1209,154,1],[8.75,1209,154,0],
+ [10.15,1050,284,0],[10.3,1050,284,1],[10.55,1050,284,0],
+ [13.4,294,222,0],[15.6,294,222,0],
+ [18.0,520,520,0],[21.6,520,540,0],
+ [T1-.25,1400,417,0],[T1-.1,1400,417,1],[T1+.15,1400,417,0],
+ [T1+1.3,700,450,0],[T1+8.0,700,520,0],
+ [T1+9.25,118,97.5,0],[T1+9.4,118,97.5,1],[T1+9.65,118,97.5,0],[T1+11.2,118,97.5,0],
+ [T1+12.6,102,172,0],[T1+12.75,102,172,1],[T1+13.0,102,172,0],
+ [T1+14.6,760,520,0],[END,700,520,0]];
+const ZM=[[0,1,768,432],[1.0,1,768,432],[1.7,1.45,800,298],[9.3,1.45,800,298],[10.3,1.3,620,500],[21.0,1.3,620,500],[22.2,1,768,432],[T1+1.4,1,768,432],[T1+2.2,1.2,645,460],[T1+7.2,1.2,645,460],[T1+8.2,1.6,480,290],[T1+13.0,1.6,480,290],[T1+13.7,1,768,432],[END,1,768,432]];
+Object.assign(TB,{
+'file-spreadsheet':'<path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"></path><path d="M8 11h8v7h-8z"></path><path d="M8 15h8"></path><path d="M11 11v7"></path>',
+'chevron-down':'<path d="M6 9l6 6l6 -6"></path>'});
+
+/* ============ أدوات إضافية ============ */
+function TL(s,x,y,sz,w,col,al='left'){ctx.font=`${w} ${sz}px ${FONT}`;ctx.fillStyle=col;ctx.direction='ltr';ctx.textAlign=al;ctx.textBaseline='middle';ctx.fillText(s,x,y);ctx.direction='rtl'}
+function trunc(s,mw,sz,w){if(tw(s,sz,w)<=mw)return s;let a=0,b=s.length;while(a<b){const m=(a+b+1)>>1;if(tw(s.slice(0,m)+'…',sz,w)<=mw)a=m;else b=m-1}return s.slice(0,a)+'…'}
+function spinArc(x,y,r,col,t){ctx.save();ctx.beginPath();ctx.arc(x,y,r,t*6,t*6+4.4);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineCap='round';ctx.stroke();ctx.restore()}
+function bub(x,y,w,h,r,f,s){ctx.beginPath();ctx.roundRect(x+.5,y+.5,w-1,h-1,r);ctx.fillStyle=f;ctx.fill();ctx.strokeStyle=s;ctx.lineWidth=1;ctx.stroke()}
+
+/* ============ البيانات ============ */
+const R0=1255,L0=36;
+const PF={ig:['skill-icons:instagram','إنستغرام'],wa:['logos:whatsapp-icon','واتساب'],fb:['logos:facebook','فيسبوك'],tt:['logos:tiktok-icon','تيك توك'],tg:['logos:telegram','تيليجرام']};
+const PK=['ig','wa','fb','tt','tg'];
+const AVB=['#ffeee6','#ebfcd2','#ebf3ff','#f7ebff','#fff4cc','#e0f5f2'],AVD=['#661800','#143823','#1d4ed8','#7e22ce','#7a5b00','#0f5f57'];
+const avIdx=n=>(n.charCodeAt(0)+n.length)%6;
+function avatar(n,cx,cy,r,pk){const k=avIdx(n);ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fillStyle=AVB[k];ctx.fill();T(n[0],cx,cy+.6,r*.78,800,AVD[k],'center');
+ if(pk){const br=r*.46,bx=cx+r*.7,by=cy+r*.72;ctx.beginPath();ctx.arc(bx,by,br+1.2,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=C.bd;ctx.lineWidth=1;ctx.stroke();ify(PF[pk][0],bx,by,br*1.45)}}
+// [الاسم، المنصة، آخر رسالة، الوقت، غير مقروء، الحالة]
+const CONV=[
+['أحمد محمود','wa','تمام، عايز أطلب واحد. التوصيل لمدينة نصر بكام؟','دقيقة',2,'ai'],
+['سارة الجندي','ig','ممكن أعرف سعر طقم الهدايا الفاخر؟','3 د',1,'ai'],
+['محمد عبد الله','fb','هل التوصيل متاح للإسكندرية؟','8 د',0,'ai'],
+['نورهان علي','tt','شكراً جداً، العطر ريحته تحفة','14 د',1,'ai'],
+['كريم حسن','tg','تمام، هستلم الأوردر بكرة الصبح','22 د',0,'ai'],
+['منة الله إبراهيم','ig','فين الأوردر بتاعي؟ مر 3 أيام','41 د',2,'st'],
+['يوسف السيد','wa','عايز أستبدل المنتج بحجم أكبر','55 د',0,'ai'],
+['هبة مصطفى','fb','طرق الدفع المتاحة إيه؟','ساعة',0,'ai'],
+['عمر خالد','tt','عندكم دهن عود كمبودي؟','ساعتين',0,'ai'],
+['دعاء فتحي','tg','ممكن أحول فودافون كاش؟','ساعتين',0,'ai'],
+['مصطفى رضا','ig','في خصم على الكمية؟','3 س',0,'ai'],
+['ياسمين طارق','wa','تم التحويل، ده إيصال الدفع','3 س',1,'st'],
+['إسلام جمال','fb','شكراً ليكم','5 س',0,'ai'],
+['رنا عادل','tt','العبوة وصلت مكسورة','5 س',2,'st'],
+['بلال أشرف','tg','تمام يا فندم','أمس',0,'ai'],
+['آية سمير','ig','ممكن صور أكتر للمنتج؟','أمس',0,'ai'],
+['ريم أسامة','ig','هل المنتج أصلي؟','أمس',0,'ai'],
+['ليلى حمدي','wa','أنا في المنصورة، التوصيل بكام؟','أمس',0,'ai'],
+['عبد الرحمن فؤاد','wa','عايز أطلب 3 زجاجات','يومين',0,'ai'],
+['خالد نبيل','ig','تمام هفكر وأرجعلك','يومين',0,'ai']];
+const PFC=PK.map(k=>CONV.filter(c=>c[1]===k).length);
+const FW=[92,128,122,122,122,134];
+const U1='السلام عليكم، عندكم عود الليل؟';
+const A1='وعليكم السلام يا فندم! أهلاً بيك في متجر النور. أيوه متاح، عود الليل بسعر 850 جنيه.';
+const U2='تمام، عايز أطلب واحد. التوصيل لمدينة نصر بكام؟';
+const A2='التوصيل للقاهرة بـ 45 جنيه خلال يومين. محتاج منك الاسم الكامل ورقم الموبايل والعنوان بالتفصيل عشان أسجل الطلب.';
+const U3='أحمد محمود، 01001234567، مدينة نصر - شارع عباس العقاد';
+const A3='تمام يا أحمد! سجلت طلبك: عود الليل × 1 — الإجمالي 895 جنيه شامل الشحن. هيوصلك تأكيد على الموبايل خلال دقائق.';
+const MS=[['u',U1,10.4,0],['a',A1,10.4,0],['u',U2,11.6,1],['a',A2,12.5,1],['u',U3,16.6,1],['a',A3,17.5,1]];
+const CHIP_T=21.2;
+
+/* ============ بيانات العملاء ============ */
+const NC=248;
+function mkRng(s){s>>>=0;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296}}
+const FN=['محمد','أحمد','محمود','مصطفى','عمر','يوسف','كريم','حسن','إبراهيم','خالد','طارق','أمير','هشام','إسلام','عبد الرحمن','سارة','منة الله','نورهان','هبة','دعاء','ياسمين','آية','ريم','ليلى','مريم','فاطمة','رنا','هدير','شيماء','نهى','سلمى','جنى'];
+const LN=['محمود','عبد الله','إبراهيم','حسن','السيد','مصطفى','الجندي','فتحي','رضا','سمير','جمال','عادل','أشرف','نبيل','حمدي','فؤاد','طارق','علي','يوسف','الشريف','عثمان','البنا','زكي','منصور'];
+const PRODS=[['عود الليل',850],['مسك الطهارة',420],['عنبر ملكي',1100],['ورد طائفي',680],['طقم هدايا فاخر',1450],['دهن عود كمبودي',1900],['بخور المعمول',260],['صندل هندي',540],['عطر الياسمين',390]];
+const GOV=['الجيزة','الإسكندرية','الدقهلية','الشرقية','الغربية','القليوبية','المنوفية','البحيرة','أسيوط','سوهاج','الإسماعيلية','بورسعيد','السويس','المنيا','الفيوم'];
+const PWT=[['ig',.30],['wa',.30],['fb',.14],['tt',.12],['tg',.14]];
+const STS=[['مؤكد',C.gBg,C.gDark],['قيد المراجعة',C.oBg,C.oDark],['تم الشحن','#ebf3ff','#1d4ed8'],['جديد','#f7ebff','#7e22ce']];
+const pick=(r,a)=>a[Math.floor(r()*a.length)];
+const minsOf=i=>Math.max(1,Math.round(1+Math.pow(i,2.1)*.9));
+function lastTxt(i){const m=minsOf(i);if(m===1)return'منذ دقيقة';if(m===2)return'منذ دقيقتين';if(m<60)return'منذ '+m+' د';
+ if(m<1440){const h=Math.round(m/60);return h===1?'منذ ساعة':h===2?'منذ ساعتين':'منذ '+h+' ساعات'}
+ const d=Math.round(m/1440);return d===1?'منذ يوم':d===2?'منذ يومين':d<=10?'منذ '+d+' أيام':'منذ '+d+' يوم'}
+const CUS=(()=>{const r=mkRng(20261003),o=[{n:'أحمد محمود',ph:'01001234567',p:'wa',prod:'عود الليل × 1',gov:'القاهرة',tot:895,st:3,id:1048,last:lastTxt(0),m:1}];
+ for(let i=1;i<NC;i++){const n=pick(r,FN)+' '+pick(r,LN),pr=pick(r,PRODS),q=r()<.78?1:2,gov=r()<.38?'القاهرة':pick(r,GOV),ship=(gov==='القاهرة'||gov==='الجيزة')?45:60;
+  const x=r();let acc=0,p='ig';for(const[k,w]of PWT){acc+=w;if(x<=acc){p=k;break}}
+  const z=r(),st=i<7?(z<.5?3:1):(z<.5?0:z<.78?2:z<.92?1:3);
+  o.push({n,ph:pick(r,['010','011','012','015'])+String(Math.floor(r()*1e8)).padStart(8,'0'),p,prod:pr[0]+' × '+q,gov,tot:pr[1]*q+ship,st,id:1048-i,last:lastTxt(i),m:minsOf(i)})}
+ return o})();
+const NEWT=CUS.filter(c=>c.m<1440).length,CONF=CUS.filter(c=>c.st===0||c.st===2).length,SALES=CUS.reduce((a,c)=>a+c.tot,0);
+
+/* ============ صندوق الوارد ============ */
+function filt(t){const ev=[[1.55,1],[2.9,2],[4.25,3],[5.6,4],[6.95,5],[8.5,0]];let cur=0,tc=-1;for(const[x,k]of ev)if(t>=x){cur=k;tc=x}return{cur,tc}}
+const PX=36,PW=803,PY=188,PH=657,T_OPEN=10.3;
+function msgs(t){const out=[];let y=40;
+ for(const m of MS){const age=t-m[2];if(age<0)break;const u=m[0]==='u',mw=u?348:388,ls=wrap(m[1],mw,13.76,400),lw=Math.max(...ls.map(l=>tw(l,13.76,400))),w=Math.min(mw+32,lw+32),h=ls.length*23+20,typing=!u&&m[3]===1&&age<.9;
+  out.push({u,ls,w,h:typing?34:h,y,age,m3:m[3],typing,tot:ls.reduce((a,l)=>a+l.length,0)});y+=(typing?34:h)+12}
+ if(t>=CHIP_T){out.push({chip:1,y,h:30,age:t-CHIP_T});y+=42}
+ return{out,end:y}}
+function chatScroll(t){let s=0;for(let k=0;k<6;k++)s+=msgs(t-k*.07).end;s/=6;return Math.max(0,s+24-514)}
+function chatPane(t){const hx=PX+PW-20;
+ avatar('أحمد محمود',hx-22,PY+34,22,'wa');
+ T('أحمد محمود',hx-44-12,PY+26,15,800,C.tp);ify(PF.wa[0],hx-44-12-6.5,PY+46,13);T('واتساب • 01001234567',hx-44-12-18,PY+46.4,11.84,400,C.tm);
+ const bw=132,b1=hv(PX+20,PY+18,bw,32);box(PX+20,PY+18,bw,32,10,'#fff',b1?'#d6d3d1':C.bd);icon('user-share',PX+20+bw-14-7.5,PY+34,15,C.ts);T('تحويل لموظف',PX+20+bw-14-15-6,PY+34.5,12.48,700,C.tp);
+ const tx0=PX+20+bw+10,tww=192,th=hv(tx0,PY+18,tww,32);box(tx0,PY+18,tww,32,10,C.gBg,th?'#7fd267':C.gBd);
+ rr(tx0+tww-12-34,PY+34-9,34,18,9,C.gDark);ctx.beginPath();ctx.arc(tx0+tww-12-34+34-9,PY+34,6.5,0,7);ctx.fillStyle='#fff';ctx.fill();T('الوكيل الذكي يرد تلقائياً',tx0+tww-12-34-8,PY+34.5,12,700,C.gDark);
+ ctx.fillStyle=C.bds;ctx.fillRect(PX+1,PY+68,PW-2,1);
+ const top=PY+69,bot=PY+PH-74;ctx.save();ctx.beginPath();ctx.rect(PX+1,top,PW-2,bot-top);ctx.clip();
+ const{out}=msgs(t),y0=top+14-chatScroll(t),hist=ease((t-10.4)/.35);
+ rr(PX+PW/2-30,y0+6,60,22,11,C.bg);T('اليوم',PX+PW/2,y0+17.4,11.04,600,C.tm,'center');
+ for(const o of out){const y=y0+o.y;
+  if(o.chip){const a=ease(o.age/.3),txt='تم تسجيل العميل في الـ CRM تلقائياً',w=tw(txt,12,700)+54;ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*8);
+   box(PX+PW/2-w/2,y,w,30,15,C.gBg,C.gBd);icon('clipboard-list',PX+PW/2+w/2-16-7,y+15,14,C.gDark);T(txt,PX+PW/2+w/2-16-14-7,y+15.4,12,700,C.gDark);ctx.restore();continue}
+  const a=o.m3===0?hist:ease(o.age/.25);ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*8);
+  if(o.u){const x=PX+PW-24-o.w;bub(x,y,o.w,o.h,[16,4,16,16],'#f5f5f4',C.bds);o.ls.forEach((l,i)=>T(l,x+o.w-16,y+10+11.5+i*23,13.76,400,C.tp))}
+  else{logo(PX+24,y+2,26);const bx=PX+60;
+   if(o.typing){bub(bx,y,58,34,[4,16,16,16],C.gBg,C.gBd);for(let i=0;i<3;i++){const dy=-4*Math.max(0,Math.sin(t*5.7-i*.8));ctx.beginPath();ctx.arc(bx+16+i*13,y+17+dy,2.6,0,7);ctx.fillStyle=C.gDark;ctx.fill()}}
+   else{bub(bx,y,o.w,o.h,[4,16,16,16],C.gBg,C.gBd);let rem=o.m3===0?o.tot:Math.floor(clamp((o.age-.9)/(o.tot/44))*o.tot);
+    o.ls.forEach((l,i)=>{const s=l.slice(0,Math.max(0,Math.min(l.length,rem)));rem-=l.length;if(s)T(s,bx+o.w-16,y+10+11.5+i*23,13.76,400,C.gDark)})}}
+  ctx.restore()}
+ ctx.restore();
+ ctx.fillStyle=C.bds;ctx.fillRect(PX+1,bot,PW-2,1);
+ const fy=PY+PH-62;box(PX+16,fy,PW-32,46,14,C.f9,C.bds);T('الوكيل بيتولى الرد الآن — اضغط "تحويل لموظف" للتدخل بنفسك',PX+PW-32,fy+23.5,12.48,400,C.tm);
+ ctx.beginPath();ctx.arc(PX+42,fy+23,16,0,7);ctx.fillStyle=C.bd;ctx.fill();icon('arrow-forward',PX+42,fy+23,15,C.tm)}
+function pageInbox(t){const R=R0,L=L0,fs=filt(t);
+ icon('inbox',R-9.6,88.5,19.2,C.tp);T('صندوق الوارد (DMs)',R-19.2-10,88.8,19.2,800,C.tp);
+ T('كل محادثات عملائك من 5 منصات في مكان واحد، والوكيل بيرد عليها لحظياً',R,114.3,13.12,400,C.ts);
+ const pt='الرد التلقائي مفعّل',pw=tw(pt,12.48,700)+48,pu=(t*1.1)%1;
+ box(L,83,pw,32,16,C.gBg,C.gBd);ctx.beginPath();ctx.arc(L+pw-18,99,4+pu*7,0,7);ctx.fillStyle=`rgba(20,56,35,${.3*(1-pu)})`;ctx.fill();ctx.beginPath();ctx.arc(L+pw-18,99,4,0,7);ctx.fillStyle=C.gDark;ctx.fill();T(pt,L+pw-31,99.4,12.48,700,C.gDark);
+ // فلاتر المنصات
+ let cx=R;for(let i=0;i<6;i++){const w=FW[i],x=cx-w;cx=x-8;const on=fs.cur===i,hov=hv(x,136,w,36);
+  box(x,136,w,36,18,on?C.tp:'#fff',on?C.tp:(hov?'#d6d3d1':C.bd));
+  const lab=i?PF[PK[i-1]][1]:'الكل',cnt=String(i?PFC[i-1]:CONV.length),cw=tw(cnt,11.04,700)+14,lw=tw(lab,12.48,700),iw=i?26:0,tot=iw+lw+8+cw;
+  let rx=x+w/2+tot/2;
+  if(i){const icx=rx-10;if(on){ctx.beginPath();ctx.arc(icx,154,10,0,7);ctx.fillStyle='#fff';ctx.fill()}ify(PF[PK[i-1]][0],icx,154,14);rx-=iw}
+  T(lab,rx,154.4,12.48,700,on?'#fff':C.ts);rx-=lw+8;
+  rr(rx-cw,145,cw,18,9,on?'rgba(255,255,255,.2)':C.bg);T(cnt,rx-cw/2,154.4,11.04,700,on?'#fff':C.tm,'center')}
+ // قائمة المحادثات
+ const LX=855,LW=400,LY=188,LH=657;
+ box(LX,LY,LW,LH,16,'#fff',C.bd);
+ box(LX+14,LY+12,LW-28,36,10,C.f9,C.bds);icon('search',LX+LW-14-20,LY+30,15,C.tm);T('ابحث في المحادثات...',LX+LW-14-38,LY+30.5,12.48,400,C.tm);
+ const items=CONV.map((c,i)=>[c,i]).filter(([c])=>fs.cur===0||c[1]===PK[fs.cur-1]),base=fs.tc>0?fs.tc:.3,sel=t>=T_OPEN?0:-1;
+ ctx.save();ctx.beginPath();ctx.rect(LX+1,LY+57,LW-2,LH-58);ctx.clip();
+ items.forEach(([c,ci],k)=>{const y=LY+58+k*76;if(y>LY+LH)return;const a=ease((t-base-k*.05)/.35);if(a<=0)return;ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*10);
+  const isSel=ci===sel,h=hv(LX,y,LW,76)&&CY>LY+57;
+  if(isSel){rr(LX+6,y+2,LW-12,72,12,'#f5f5f4');rr(LX+LW-9,y+22,3,32,2,C.tp)}else if(h)rr(LX+6,y+2,LW-12,72,12,C.f9);
+  avatar(c[0],LX+LW-16-22,y+38,22,c[1]);
+  const nx=LX+LW-16-44-12;T(c[0],nx,y+25,13.76,700,C.tp);
+  const st=c[5]==='ai'?['رد تلقائي',C.gBg,C.gDark]:['بانتظار موظف',C.oBg,C.oDark],tg=tw(st[0],10.24,700)+14,tx=nx-tw(c[0],13.76,700)-8;
+  rr(tx-tg,y+16.5,tg,17,8.5,st[1]);T(st[0],tx-tg/2,y+25.2,10.24,700,st[2],'center');
+  T(c[3],LX+18,y+25,11.2,400,C.tm,'left');
+  T(trunc(c[2],c[4]?250:290,12.16,400),nx,y+49,12.16,400,C.ts);
+  if(c[4]){rr(LX+18,y+40,20,18,9,C.gDark);T(String(c[4]),LX+28,y+49.3,10.88,700,'#fff','center')}
+  ctx.fillStyle=C.bds;ctx.fillRect(LX+16,y+75,LW-32,1);ctx.restore()});
+ ctx.restore();
+ // لوحة المحادثة
+ box(PX,PY,PW,PH,16,'#fff',C.bd);
+ const oa=ease((t-T_OPEN)/.35);
+ if(oa<1){ctx.save();ctx.globalAlpha*=1-oa;const ex=PX+PW/2,ey=PY+PH/2-30;ctx.beginPath();ctx.arc(ex,ey,38,0,7);ctx.fillStyle=C.bg;ctx.fill();icon('messages',ex,ey,34,C.tm);
+  T('اختر محادثة لعرض الرسائل',ex,ey+62,15,800,C.tp,'center');T('الوكيل بيرد تلقائياً على كل الرسائل الجديدة من كل المنصات',ex,ey+88,12.48,400,C.tm,'center');ctx.restore()}
+ if(oa>0){ctx.save();ctx.globalAlpha*=oa;chatPane(t);ctx.restore()}}
+
+/* ============ العملاء (CRM) ============ */
+const CX_=[1235,965,815,685,515,395,285,165];
+const SC1=[[0,0],[1.7,0],[7.0,2000],[7.4,2000],[8.8,0],[99,0]];
+function exportBtn(tl){const x=36,y=79,w=164,h=37,ts=9.4,te=11.4,pr=clamp((tl-ts)/(te-ts)),ld=tl>=ts&&tl<te,dn=tl>=te&&tl<15,hov=hv(x,y,w,h);
+ box(x,y,w,h,12,dn?C.gDark:C.gBg,dn?C.gDark:(hov||ld?'#7fd267':C.gBd));
+ if(ld){ctx.save();ctx.beginPath();ctx.roundRect(x+1,y+1,w-2,h-2,11);ctx.clip();const pw=(w-2)*sm(pr);ctx.fillStyle='#c4f08a';ctx.fillRect(x+w-1-pw,y+1,pw,h-2);ctx.restore()}
+ const lab=ld?'جاري التصدير '+Math.round(pr*100)+'%':dn?'تم التصدير':'تصدير Excel',col=dn?'#fff':C.gDark,ix=x+w-14-8.4;
+ if(ld)spinArc(ix,y+h/2,6.5,C.gDark,tl);else if(dn)icon('check',ix,y+h/2,16.8,'#fff');else icon('file-spreadsheet',ix,y+h/2,16.8,C.gDark);
+ T(lab,ix-8.4-8,y+h/2+.5,12.8,700,col)}
+function crmRow(c,i,y,tl,a){
+ ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*10);
+ if(hv(L0+1,y,1217,50)&&CY>324&&CY<845)rr(L0+1,y,1217,50,0,C.f9);
+ const k=avIdx(c.n),xr=CX_;ctx.beginPath();ctx.arc(xr[0]-17,y+25,17,0,7);ctx.fillStyle=AVB[k];ctx.fill();T(c.n[0],xr[0]-17,y+25.6,13.5,800,AVD[k],'center');
+ T(trunc(c.n,215,13.12,700),xr[0]-44,y+20,13.12,700,C.tp);T('#'+c.id,xr[0]-44,y+36,11.04,400,C.tm);
+ T(c.ph,xr[1],y+25.4,12.8,500,C.ts);
+ ify(PF[c.p][0],xr[2]-9,y+25,18);T(PF[c.p][1],xr[2]-24,y+25.4,12.8,500,C.ts);
+ T(c.prod,xr[3],y+25.4,12.8,500,C.tp);T(c.gov,xr[4],y+25.4,12.8,500,C.ts);
+ T(c.tot.toLocaleString('en-US')+' ج.م',xr[5],y+25.4,12.8,700,C.tp);
+ const st=STS[c.st],pw=tw(st[0],11.52,700)+22;rr(xr[6]-pw,y+13,pw,24,12,st[1]);T(st[0],xr[6]-pw/2,y+25.4,11.52,700,st[2],'center');
+ T(c.last,xr[7],y+25.4,12,400,C.tm);
+ ctx.fillStyle=C.bds;ctx.fillRect(L0+1,y+49,1217,1);ctx.restore()}
+function pageCRM(tl){const R=R0,L=L0,sw=ease((tl-.3)/1.3),sc=kf(SC1,tl)[0];
+ icon('users',R-9.6,88.5,19.2,C.tp);T('العملاء (CRM)',R-19.2-10,88.8,19.2,800,C.tp);
+ T('سجل بيانات وطلبات العملاء — بيتسجلوا تلقائياً من محادثات الوكيل على كل المنصات',R,114.3,13.12,400,C.ts);
+ exportBtn(tl);
+ // كروت الأرقام
+ const cards=[['إجمالي العملاء',NC,'users',''],['عملاء جدد اليوم',NEWT,'message-2-bolt',''],['طلبات مؤكدة وجاهزة',CONF,'shopping-cart-check',''],['إجمالي المبيعات',SALES,'receipt-2',' ج.م']],cw=(1219-42)/4;
+ cards.forEach((c,i)=>{const x=R-cw-i*(cw+14),a=ease((tl-.1-i*.1)/.45);ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(1-a)*14);box(x,136,cw,78,18,'#fff',C.bd);
+  rr(x+16,157,36,36,10,C.bg);icon(c[2],x+34,175,18,C.ts);T(c[0],x+cw-18,160,12.48,600,C.ts);
+  T(Math.round(c[1]*sw).toLocaleString('en-US')+c[3],x+cw-18,188,24.5,800,C.tp);ctx.restore()});
+ // شريط الأدوات
+ const ty=230,first=Math.floor(sc/50);
+ box(R-360,ty,360,38,12,'#fff',C.bd);icon('search',R-18-7.5,ty+19,15,C.tm);T('ابحث بالاسم أو رقم الموبايل...',R-18-15-8,ty+19.5,12.8,400,C.tm);
+ [['المنصة: الكل',R-360-8-150],['الحالة: الكل',R-360-8-150-8-150]].forEach(([s,x])=>{const h=hv(x,ty,150,38);box(x,ty,150,38,12,'#fff',h?'#d6d3d1':C.bd);T(s,x+150-14,ty+19.5,12.8,600,C.ts);icon('chevron-down',x+18,ty+19,15,C.tm)});
+ T(`عرض ${first+1} إلى ${Math.min(NC,first+10)} من ${NC} عميل`,L,ty+19.5,12.8,600,C.ts,'left');
+ // الجدول
+ box(L,284,1219,561,16,'#fff',C.bd);
+ ctx.save();ctx.beginPath();ctx.roundRect(L+.5,284.5,1218,39.5,[15.5,15.5,0,0]);ctx.fillStyle=C.f9;ctx.fill();ctx.restore();ctx.fillStyle=C.bd;ctx.fillRect(L+1,323.5,1217,1);
+ ['العميل','رقم الموبايل','المنصة','المنتج المطلوب','المحافظة','الإجمالي','الحالة','آخر نشاط'].forEach((s,i)=>T(s,CX_[i],304,11.84,700,C.tm));
+ ctx.save();ctx.beginPath();ctx.roundRect(L+1,324.5,1217,519.5,[0,0,15,15]);ctx.clip();
+ const f0=Math.max(0,Math.floor(sc/50)-1),f1=Math.min(NC-1,f0+13);
+ for(let i=f0;i<=f1;i++){const y=324+i*50-sc,a=i<11?ease((tl-.5-i*.07)/.4):1;if(a<=0)continue;crmRow(CUS[i],i,y,tl,a)}
+ ctx.restore();
+ const va=sm((tl-1.5)/.4)*(1-sm((tl-8.8)/.5));
+ if(va>.01){const tot=NC*50,vis=519,thh=Math.max(40,vis*vis/tot),tyy=324+(sc/(tot-vis))*(vis-thh);rr(L+1219-9,tyy,4,thh,2,`rgba(168,162,158,${.8*va})`)}}
+function popover(tl){const a=ease((tl-11.55)/.35);if(a<=0)return;const x=36,y=126,w=430,h=92;ctx.save();ctx.globalAlpha*=a;ctx.translate(0,(a-1)*12);
+ ctx.save();ctx.shadowColor='rgba(28,25,23,.16)';ctx.shadowBlur=30;ctx.shadowOffsetY=10;rr(x,y,w,h,16,'#fff');ctx.restore();box(x,y,w,h,16,'#fff',C.bd);
+ rr(x+w-16-46,y+23,46,46,12,C.gBg);icon('file-spreadsheet',x+w-16-23,y+46,24,C.gDark);
+ T('تم تصدير 248 عميل بنجاح',x+w-16-46-14,y+34,14.4,800,C.tp);TL('bedaya-customers-2026-10-03.xlsx',x+w-16-46-14,y+58,11.84,500,C.tm,'right');
+ const bx=x+16,by=y+h/2-15,hov=hv(bx,by,100,30);rr(bx,by,100,30,10,hov?'#292524':C.tp);T('فتح الملف',bx+50,by+15.4,12.48,700,'#fff','center');ctx.restore()}
+function excel(tl){const t0=13.05,a=ease((tl-t0)/.45);if(a<=0)return;
+ ctx.save();ctx.globalAlpha=.4*a;ctx.fillStyle='#0c0a09';ctx.fillRect(-8,-8,W+16,H+16);
+ ctx.globalAlpha=a;const x=168,y=96,w=1200,h=672,cx=x+w/2,cy=y+h/2,s=.94+.06*a;ctx.translate(cx,cy);ctx.scale(s,s);ctx.translate(-cx,-cy);
+ ctx.save();ctx.shadowColor='rgba(0,0,0,.4)';ctx.shadowBlur=50;ctx.shadowOffsetY=18;rr(x,y,w,h,12,'#fff');ctx.restore();
+ ctx.save();ctx.beginPath();ctx.roundRect(x,y,w,h,12);ctx.clip();
+ ctx.fillStyle='#1d6f42';ctx.fillRect(x,y,w,34);TL('bedaya-customers-2026-10-03.xlsx — Excel',x+w/2,y+17.5,12.5,600,'#fff','center');icon('file-spreadsheet',x+w-26,y+17,16,'#fff');
+ ctx.fillStyle='#fff';ctx.fillRect(x+22,y+17,11,1.4);ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(x+52.5,y+12.5,9,9);icon('x',x+90,y+17,13,'#fff');
+ ctx.fillStyle='#f3f3f3';ctx.fillRect(x,y+34,w,40);
+ let rx=x+w-16;['ملف','الصفحة الرئيسية','إدراج','تخطيط الصفحة','صيغ','بيانات','مراجعة','عرض'].forEach((s2,i)=>{const wd=tw(s2,12.5,600)+28;if(i===1){rr(rx-wd,y+40,wd,34,6,'#fff');ctx.fillStyle='#1d6f42';ctx.fillRect(rx-wd+8,y+71,wd-16,3)}T(s2,rx-wd/2,y+57.5,12.5,i===1?700:500,i===1?'#1d6f42':'#444','center');rx-=wd});
+ ctx.fillStyle='#fff';ctx.fillRect(x,y+74,w,30);ctx.fillStyle='#d4d4d4';ctx.fillRect(x,y+103,w,1);
+ box(x+w-16-64,y+78,64,22,3,'#fff','#c8c8c8');TL('A1',x+w-16-32,y+89.5,12,500,'#333','center');TL('fx',x+w-16-64-24,y+89.5,12.5,600,'#777','center');T('الاسم الكامل',x+w-16-64-44,y+89.5,12.5,500,'#222');
+ const gy=y+104,gx=x+w-44,GW=[190,140,120,160,130,110,120,130],HD=['الاسم الكامل','رقم الموبايل','المنصة','المنتج المطلوب','المحافظة','الإجمالي (ج.م)','الحالة','آخر نشاط'],tot=GW.reduce((p,q)=>p+q,0),RH=26,NR=19;
+ ctx.fillStyle='#e8e8e8';ctx.fillRect(x,gy,w,22);ctx.fillRect(gx,gy,44,h-(gy-y)-30);
+ ctx.fillStyle='#d3e9dc';ctx.fillRect(gx-GW[0],gy,GW[0],22);ctx.fillRect(gx,gy+22,44,RH);
+ let re=gx;GW.forEach((gw,j)=>{TL(String.fromCharCode(65+j),re-gw/2,gy+11.5,11,600,'#555','center');re-=gw});
+ ctx.fillStyle='#143823';ctx.fillRect(gx-tot,gy+22,tot,RH);
+ for(let k=0;k<NR;k++){const ry=gy+22+k*RH,ra=ease((tl-t0-.35-k*.04)/.25);T(String(k+1),gx+22,ry+RH/2+.5,11,500,'#555','center');if(ra<=0)continue;
+  ctx.save();ctx.globalAlpha*=ra;const c=k>0?CUS[k-1]:null;let e2=gx;
+  GW.forEach((gw,j)=>{const txt=k===0?HD[j]:[c.n,c.ph,PF[c.p][1],c.prod,c.gov,c.tot.toLocaleString('en-US'),STS[c.st][0],c.last][j];T(trunc(txt,gw-16,12.3,k?500:700),e2-8,ry+RH/2+.5,12.3,k?500:700,k?'#222':'#fff');e2-=gw});ctx.restore()}
+ ctx.fillStyle='#d9d9d9';for(let k=0;k<=NR;k++)ctx.fillRect(x,gy+22+k*RH,w,1);
+ re=gx;for(let j=0;j<=GW.length;j++){ctx.fillRect(re,gy,1,22+NR*RH);if(j<GW.length)re-=GW[j]}
+ ctx.strokeStyle='#21a366';ctx.lineWidth=2;ctx.strokeRect(gx-GW[0]+1,gy+22+1,GW[0]-2,RH-2);
+ ctx.fillStyle='#f3f3f3';ctx.fillRect(x,y+h-30,w,30);ctx.fillStyle='#d4d4d4';ctx.fillRect(x,y+h-30,w,1);
+ rr(x+w-16-110,y+h-29,110,29,0,'#fff');ctx.fillStyle='#1d6f42';ctx.fillRect(x+w-16-110,y+h-3,110,3);T('العملاء',x+w-16-55,y+h-14.5,12.5,700,'#1d6f42','center');
+ T('جاهز • 248 صف',x+16,y+h-14.5,11.5,500,'#555','left');
+ ctx.restore();ctx.restore()}
+
+
+return{CUR,ZM,pageInbox,pageCRM,popover,excel,TAB1:T1,END}})();
+/* ============ المؤشر (الأيدي) ============ */
+function drawHand(){const k=DOWN?'closed':HOT?'point':'open',s=40/32,hx=k==='point'?[12.7,8.3]:[16,16];
+ if(PRESS<.45&&!NOCAM){const r=6+PRESS*60;ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.strokeStyle=`rgba(28,25,23,${.38*(1-PRESS/.45)})`;ctx.lineWidth=2;ctx.stroke()}
+ ctx.save();ctx.translate(CX-hx[0]*s,CY-hx[1]*s);ctx.scale(s,s);ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=6;ctx.shadowOffsetY=2;ctx.fillStyle='#fff';ctx.fill(HP[k]);ctx.shadowColor='transparent';
+ ctx.strokeStyle='#000';ctx.lineWidth=.75;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke(HP[k]);for(const l of LINES){ctx.beginPath();ctx.moveTo(l[0],l[1]);ctx.lineTo(l[2],l[3]);ctx.stroke()}ctx.restore()}
+
+/* ============ الخط الزمني الموحّد: 6 صفحات في تسجيل واحد متصل ============
+   كل انتقال بين الصفحات = المؤشر يضغط على عنصر القائمة الجانبية، فتتلاشى الصفحة القديمة
+   وتظهر الجديدة، بدون أي قطع. أوقات الضغط (SW) هي لحظة "الضغطة" في سيناريو المؤشر. */
+const O1=0,O2=31.4,O3=65.95;                       // لحظة بداية كل مشهد على الخط الزمني العام
+const SW=[0,O1+SEG1.TAB1,O2+SEG2.CLICK,O2+SEG2.TAB1,O3,O3+SEG3.TAB1];   // لحظة ظهور كل صفحة
+const END=O3+SEG3.END;
+const FO=.16,FI=.34;                                // تلاشي الصفحة القديمة / ظهور الجديدة
+const shiftKF=(a,d)=>a.map(k=>[k[0]+d].concat(k.slice(1)));
+const CURG=[].concat(SEG1.CUR,shiftKF(SEG2.CUR,O2),shiftKF(SEG3.CUR,O3));
+const ZMG=[].concat(SEG1.ZM,shiftKF(SEG2.ZM,O2),shiftKF(SEG3.ZM,O3));
+for(const[n,a]of[['CUR',CURG],['ZM',ZMG]])for(let i=1;i<a.length;i++)if(!(a[i][0]>a[i-1][0]))throw new Error(n+' غير متزايد عند '+i+': '+a[i-1][0]+' → '+a[i][0]);
+
+const PAGES=[
+ T=>{const t=T-O1;SCR=kf(SEG1.S0,t)[0];OFFY=-SCR;ctx.translate(0,OFFY);SEG1.page0(t)},
+ T=>{OFFY=0;SEG1.page1(T-SW[1])},
+ T=>{const t=T-O2;SCR=kf(SEG2.S2,t)[0];OFFY=-SCR;ctx.translate(0,OFFY);SEG2.pageChannels(t)},
+ T=>{OFFY=0;const t=T-O2;SEG2.pageStats(t,t-SEG2.TAB1)},
+ T=>{OFFY=0;SEG3.pageInbox(T-O3)},
+ T=>{OFFY=0;const tl=T-SW[5];SEG3.pageCRM(tl);SEG3.popover(tl)}];
+
+/* ============ الخلفية (v2): Mesh Pro — نقل حرفي من ملف «محرر خلفية Mesh Pro»، ونافذة التطبيق عائمة فوقها ============
+   كل رقم هنا مأخوذ من CSS الملف المرجعي، ووحدة 1px هناك = وحدة واحدة في مساحة التصميم (1536×864). */
+const BG={base:'#050505',          // --mesh-bg-black
+ speed:15,                          // --anim-speed بالثواني (السرعة الافتراضية في الملف المرجعي)
+ blur:50,                           // filter: blur(50px)
+ opacity:.9,                        // opacity الكرات (مع mix-blend-mode: screen)
+ noise:.35,                         // opacity طبقة النقاط (.mesh-noise-overlay)
+ dotAlpha:.15,dotGrid:20,dotR:1};   // radial-gradient(rgba(255,255,255,.15) 1px, transparent 1px) بمربع 20px
+const INSET=.9,WIN_R=18;            // INSET: حجم النافذة بالنسبة للشاشة (الباقي يظهر منه الخلفية)
+// الكرات الأربع بنفس ترتيب عناصر الملف المرجعي — الألوان الأربعة تُغيَّر من هنا فقط
+// size: الأبعاد · top/right أو bottom/left: الإزاحة عن حواف المسرح · mul: مضاعف المدة · tf: نوع التسارع (لكل فترة بين keyframes كما في CSS)
+// kf: [offset, translateX, translateY, rotate°, scale, [border-radius: 4 أفقية % ثم 4 رأسية % بترتيب TL TR BR BL]]
+const R50=[50,50,50,50,50,50,50,50];
+const ORB_K=1.15;                   // مضاعف حجم الكرات الأربع معاً (1 = أحجام الملف المرجعي حرفياً) — يوسّع مساحة الألوان في الركنين ويقلّل البقعتين السوداوين الأخريين
+const ORBS=[
+ {col:'#BAF24A',size:700,top:-180,right:-100,mul:1,tf:'linear',kf:[                       // orb-top-right-1 · organicMotionTR1
+  [0,0,0,0,1,[40,60,70,30,40,50,60,50]],[.33,-140,90,120,1.15,[60,40,30,70,50,60,40,60]],
+  [.66,-80,160,240,.95,[30,70,50,50,60,30,70,40]],[1,0,0,360,1,[40,60,70,30,40,50,60,50]]]},
+ {col:'#FF5C16',size:620,top:-20,right:-140,mul:1.25,tf:'easeInOut',kf:[                   // orb-top-right-2 · organicMotionTR2
+  [0,0,0,0,1,R50],[.5,-160,80,-45,1.2,[35,65,60,40,50,35,65,50]],[1,0,0,0,1,R50]]},
+ {col:'#89B0FF',size:700,bottom:-180,left:-100,mul:1.15,tf:'easeInOut',kf:[               // orb-bottom-left-1 · organicMotionBL1
+  [0,0,0,0,1,[60,40,50,50,40,60,50,50]],[.33,140,-90,-120,1.12,[40,60,30,70,60,40,70,30]],
+  [.66,80,-160,-240,.95,[70,30,60,40,30,70,40,60]],[1,0,0,-360,1,[60,40,50,50,40,60,50,50]]]},
+ {col:'#A220FF',size:620,bottom:-20,left:-140,mul:1.35,tf:'linear',kf:[                      // orb-bottom-left-2 · organicMotionBL2
+  [0,0,0,0,1,R50],[.5,160,-80,45,1.18,[65,35,40,60,35,65,50,50]],[1,0,0,0,1,R50]]}];
+const orbSize=o=>o.size*ORB_K;
+const orbCenter=o=>[o.right!=null?W-o.right-orbSize(o)/2:o.left+orbSize(o)/2, o.top!=null?o.top+orbSize(o)/2:H-o.bottom-orbSize(o)/2];
+// cubic-bezier كما في CSS (ease-in-out = .42,0,.58,1)
+const _bz=(x1,y1,x2,y2)=>{const cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by,X=s=>((ax*s+bx)*s+cx)*s,Y=s=>((ay*s+by)*s+cy)*s,dX=s=>(3*ax*s+2*bx)*s+cx;
+ return x=>{if(x<=0)return 0;if(x>=1)return 1;let s=x;for(let i=0;i<8;i++){const e=X(s)-x;if(Math.abs(e)<1e-7)return Y(s);const d=dX(s);if(Math.abs(d)<1e-6)break;s-=e/d}
+  let lo=0,hi=1;s=x;for(let i=0;i<48;i++){const e=X(s);if(Math.abs(e-x)<1e-7)break;if(e<x)lo=s;else hi=s;s=(lo+hi)/2}return Y(s)}};
+const TF={linear:x=>x,easeInOut:_bz(.42,0,.58,1)};
+// حالة الكرة عند زمن T: تكرار لانهائي، والتسارع يُطبَّق على كل فترة بين keyframe وأخرى (سلوك CSS)
+function orbState(o,T){const d=BG.speed*o.mul,ph=(((T%d)+d)%d)/d,k=o.kf;let i=0;while(i<k.length-2&&ph>=k[i+1][0])i++;
+ const a=k[i],b=k[i+1],p=TF[o.tf]((ph-a[0])/(b[0]-a[0])),L=(x,y)=>x+(y-x)*p;
+ return{tx:L(a[1],b[1]),ty:L(a[2],b[2]),rot:L(a[3],b[3]),sc:L(a[4],b[4]),rad:a[5].map((v,j)=>L(v,b[5][j]))}}
+// مستطيل بحواف بيضاوية مختلفة لكل زاوية (border-radius بصيغة أ/ب) مرسوم حول المركز، مع قاعدة CSS لتصغير الأقطار إذا تجاوز مجموعها الضلع
+function orbPath(g,w,h,r){const rx=r.slice(0,4).map(v=>v*w/100),ry=r.slice(4).map(v=>v*h/100);
+ const s=Math.min(1,w/(rx[0]+rx[1]),h/(ry[1]+ry[2]),w/(rx[2]+rx[3]),h/(ry[0]+ry[3]));if(s<1)for(let i=0;i<4;i++){rx[i]*=s;ry[i]*=s}
+ const x0=-w/2,y0=-h/2,x1=w/2,y1=h/2,P=Math.PI;g.beginPath();g.moveTo(x0+rx[0],y0);g.lineTo(x1-rx[1],y0);
+ g.ellipse(x1-rx[1],y0+ry[1],rx[1],ry[1],0,-P/2,0);g.lineTo(x1,y1-ry[2]);
+ g.ellipse(x1-rx[2],y1-ry[2],rx[2],ry[2],0,0,P/2);g.lineTo(x0+rx[3],y1);
+ g.ellipse(x0+rx[3],y1-ry[3],rx[3],ry[3],0,P/2,P);g.lineTo(x0,y0+ry[0]);
+ g.ellipse(x0+rx[0],y0+ry[0],rx[0],ry[0],0,P,P*1.5);g.closePath()}
+// الكرات تُرسم مموَّهة في لوحة وسيطة بربع الدقة (464×296) مع هامش BGM حول الشاشة حتى لا تفقد حواف التمويه، ثم تُكبَّر: الصورة ناعمة أصلاً فلا يظهر الفرق
+const BGM=160,BGS=.25;
+const BGC=document.createElement('canvas');BGC.width=(W+2*BGM)*BGS;BGC.height=(H+2*BGM)*BGS;const bg=BGC.getContext('2d');
+let BG_FILTER='filter' in bg;       // بديل لمتصفحات بلا ctx.filter: ظل مموَّه (shadowBlur=2σ) برسم الشكل خارج اللوحة
+function drawOrbs(T){
+ bg.setTransform(1,0,0,1,0,0);bg.globalCompositeOperation='source-over';bg.globalAlpha=1;bg.fillStyle=BG.base;bg.fillRect(0,0,BGC.width,BGC.height);
+ for(const o of ORBS){const st=orbState(o,T),[cx,cy]=orbCenter(o),sig=BG.blur*st.sc*BGS,OFF=4000;   // التمويه يُحسب في فضاء العنصر نفسه فيتبع تكبيره (كما يفعل CSS)
+  bg.save();bg.globalCompositeOperation='screen';bg.globalAlpha=BG.opacity;bg.fillStyle=o.col;bg.setTransform(BGS,0,0,BGS,BGM*BGS,BGM*BGS);
+  if(BG_FILTER)bg.filter='blur('+sig+'px)';else{bg.shadowColor=o.col;bg.shadowBlur=2*sig;bg.shadowOffsetX=OFF}
+  bg.translate(cx+st.tx-(BG_FILTER?0:OFF/BGS),cy+st.ty);bg.rotate(st.rot*Math.PI/180);bg.scale(st.sc,st.sc);orbPath(bg,orbSize(o),orbSize(o),st.rad);bg.fill();bg.restore()}}
+function drawMesh(T){
+ drawOrbs(T);ctx.imageSmoothingQuality='low';ctx.drawImage(BGC,-BGM,-BGM,W+2*BGM,H+2*BGM);ctx.imageSmoothingQuality='high';   // الجودة الخفيفة تكفي لصورة ناعمة وأسرع بكثير
+ // طبقة النقاط: نقطة نصف قطرها 1 في منتصف كل مربع 20×20 (لا تُرسم النقاط التي تحت النافذة تماماً)
+ if(BG.noise>0){const g=BG.dotGrid,f=INSET,m=WIN_R*f+2,x0=W/2-f*W/2+m,x1=W/2+f*W/2-m,y0=H/2-f*H/2+m,y1=H/2+f*H/2-m;
+  ctx.fillStyle='rgba(255,255,255,'+(BG.dotAlpha*BG.noise)+')';ctx.beginPath();
+  for(let y=g/2;y<H;y+=g)for(let x=g/2;x<W;x+=g){if(x>x0&&x<x1&&y>y0&&y<y1)continue;ctx.moveTo(x+BG.dotR,y);ctx.arc(x,y,BG.dotR,0,6.283185307179586)}
+  ctx.fill()}}
+// ظل النافذة: يُرسم مرة واحدة في صورة جاهزة (إحداثيات التطبيق، بهامش SH_M حولها)
+const SH_M=110;let _sh=null;
+function shadowImg(){if(_sh)return _sh;const r=1.25,c=document.createElement('canvas');c.width=Math.ceil((W+2*SH_M)*r);c.height=Math.ceil((H+2*SH_M)*r);const g=c.getContext('2d');
+ g.scale(r,r);g.shadowColor='rgba(28,22,48,.30)';g.shadowBlur=50*r;g.shadowOffsetY=18*r;g.fillStyle='#f5f5f4';g.beginPath();g.roundRect(SH_M,SH_M,W,H,WIN_R);g.fill();
+ // نمسح داخل النافذة نفسها حتى لا يبقى إلا الظل حولها
+ g.shadowColor='transparent';g.globalCompositeOperation='destination-out';g.beginPath();g.roundRect(SH_M,SH_M,W,H,WIN_R);g.fill();return _sh=c}
+
+/* ============ الإطار ============ */
+function pageAt(T){let p=0;for(let k=1;k<6;k++)if(T>=SW[k])p=k;return p}
+function render(T){const p=pageAt(T);
+ const[s0,fx0,fy0]=NOCAM?[1,W/2,H/2]:kf(ZMG,T),f=INSET;
+ // الزوم: عند 1x تظهر الخلفية حول النافذة، وعند الزوم يرجع حجم المحتوى كما كان في الفيديو الأصلي (فتظهر الخلفية أحياناً عند الأطراف فقط)
+ const S=s0*(1+(1/f-1)*sm((s0-1)/.15)),fxs=W/2+f*(fx0-W/2),fys=H/2+f*(fy0-H/2),fx=clamp(fxs,W/(2*S),W-W/(2*S)),fy=clamp(fys,H/(2*S),H-H/(2*S));
+ const cs=curStateOf(CURG,T);CX=cs.x;CY=cs.y;DOWN=cs.d;PRESS=cs.ps;HOT=false;
+ const tl5=T-SW[5];MODAL=p===5&&tl5>=13.05;const K=BASE*Q,k=K*S;
+ ctx.setTransform(k,0,0,k,K*(W/2-S*fx),K*(H/2-S*fy));
+ drawMesh(T);
+ ctx.save();ctx.translate(W/2-f*W/2,H/2-f*H/2);ctx.scale(f,f);                 // من هنا الإحداثيات هي إحداثيات التطبيق نفسها
+ ctx.imageSmoothingQuality='low';ctx.drawImage(shadowImg(),-SH_M,-SH_M,W+2*SH_M,H+2*SH_M);ctx.imageSmoothingQuality='high';
+ ctx.save();ctx.beginPath();ctx.roundRect(0,0,W,H,WIN_R);ctx.clip();
+ shell(p);
+ ctx.save();ctx.beginPath();ctx.roundRect(5,55,1281,802,19);ctx.clip();
+ const since=p>0?T-SW[p]:0;let dp=p,tt=T,a=1;
+ if(p===0)a=T<.6?ease(T/.6):1;
+ else if(since<FO){dp=p-1;tt=SW[p];a=1-sm(since/FO)}      // الصفحة القديمة تتلاشى (مجمّدة عند لحظة الضغطة)
+ else a=ease((since-FO)/FI);                               // الصفحة الجديدة تظهر
+ ctx.globalAlpha=a;PAGES[dp](tt);
+ ctx.restore();
+ if(p===5)SEG3.excel(tl5);
+ ctx.restore();
+ ctx.save();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(.75,.75,W-1.5,H-1.5,WIN_R);ctx.stroke();ctx.restore();
+ if(!NOCAM)drawHand();
+ ctx.restore();
+ const fo=T>END-.5?1-ease((END-T)/.5):0;if(fo>0){ctx.globalAlpha=fo;ctx.fillStyle=BG.base;ctx.fillRect(-8,-8,W+16,H+16);ctx.globalAlpha=1}}
+/* ============ التحضير: تحميل كل شيء ثم تسخين الرسم قبل العرض ============ */
+async function prepareIdentity(){canvas.width=CONFIG.width;canvas.height=CONFIG.height;
+ statusText.textContent='تحميل الخطوط…';await Promise.all([300,400,500,600,700,800].map(w=>document.fonts.load(w+' 16px "Readex Pro"').catch(()=>{})));await document.fonts.ready;
+ statusText.textContent='تحميل أيقونات Iconify…';await loadIfy(['solar:chat-square-code-bold-duotone','solar:clipboard-list-bold-duotone','solar:cloud-upload-bold-duotone','logos:google-gemini','logos:openai-icon','logos:claude-icon','logos:meta-icon','skill-icons:instagram','logos:telegram','logos:whatsapp-icon','logos:facebook','logos:tiktok-icon','logos:google-gmail']);
+ statusText.textContent='تجهيز المشاهد…';
+ prepFrame();for(let pass=0;pass<4;pass++){for(let t=0;t<END;t+=.5)render(t);await Promise.all(PEND);}
+ window.__failed=FAILED;
+ if(FAILED.length)logToConsole('تعذّر تحميل '+FAILED.length+' أيقونة من Iconify — استُخدمت بدائل مؤقتة: '+FAILED.join(', '),'warn')}
+
+/* ============ العقد التقني (Technical Contract) ============ */
+function prepFrame(){   // الكانفاس الآن من الطبقة الثابتة (alpha مفعّل)، و init() يعيد ضبط canvas.width فيُصفّر الـ ctx: نعيد الإعدادات كل فريم
+ ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.fontKerning='normal';ctx.textRendering='optimizeLegibility';
+ ctx.fillStyle=BG.base;ctx.fillRect(0,0,canvas.width,canvas.height)}   // يعادل alpha:false القديم: فريم معتم دائماً
+async function drawSceneAtTime(time){
+ prepFrame();const n=PEND.length;render(time);
+ if(PEND.length>n){await Promise.all(PEND);prepFrame();render(time)}}   // أيقونة جديدة لم تُفك بعد: ننتظر فكّها ونعيد نفس الفريم (التصدير يمر فريماً بفريم دون إتاحة وقت للفك)
+const CONFIG={fps:30,width:1920,height:1080,duration:END};
+const OUTPUT_FILENAME='bedaya-full-demo-v3';
+let audioBuffer=null;
+const Q=CONFIG.width/1920;   // معامل الدقة: 1920 → 1، 3840 → 2
+
+
+
+        // ============ FIXED TECHNICAL LAYER (RUNTIME ENGINE) ============
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clamp01(val) { return Math.max(0, Math.min(1, val)); }
+
+        function layoutArabicParagraph(text, font, maxWidth, wordGap, lineHeight, centerY) {
+            ctx.font = font;
+            const words = text.split(' ');
+            const lines = [];
+            let currentWords = [], currentWidth = 0;
+
+            words.forEach(w => {
+                const wordWidth = ctx.measureText(w).width;
+                const testWidth = currentWidth + (currentWords.length > 0 ? wordGap : 0) + wordWidth;
+                if (testWidth > maxWidth && currentWords.length > 0) {
+                    lines.push({ words: currentWords, width: currentWidth });
+                    currentWords = []; currentWidth = 0;
+                }
+                currentWords.push({ text: w, width: wordWidth });
+                currentWidth += (currentWords.length > 1 ? wordGap : 0) + wordWidth;
+            });
+            if (currentWords.length) lines.push({ words: currentWords, width: currentWidth });
+
+            const totalHeight = lines.length * lineHeight;
+            const startY = centerY - totalHeight / 2 + lineHeight / 2;
+            const flatWords = [];
+
+            lines.forEach((line, li) => {
+                const lineY = startY + li * lineHeight;
+                let currentX = (CONFIG.width / 2) + (line.width / 2);
+                line.words.forEach(w => {
+                    const wx = currentX - w.width;
+                    flatWords.push({ text: w.text, x: wx + w.width / 2, y: lineY });
+                    currentX -= (w.width + wordGap);
+                });
+            });
+            return flatWords;
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function concatenateAudioBuffers(buffers) {
+            if (!buffers || buffers.length === 0) throw new Error("لا يوجد AudioBuffer للتجميع");
+            const sampleRate = buffers[0].sampleRate;
+            const channelsCount = buffers[0].numberOfChannels;
+            const totalSamples = buffers.reduce((sum, b) => sum + b.length, 0);
+            const combined = getSharedAudioContext().createBuffer(channelsCount, totalSamples, sampleRate);
+
+            let sampleOffset = 0, timeOffset = 0.0;
+            const segments = [];
+
+            for (const buf of buffers) {
+                for (let ch = 0; ch < channelsCount; ch++) {
+                    combined.getChannelData(ch).set(buf.getChannelData(ch), sampleOffset);
+                }
+                const duration = buf.duration;
+                segments.push({ start: timeOffset, end: timeOffset + duration, duration });
+                sampleOffset += buf.length;
+                timeOffset += duration;
+            }
+            return { buffer: combined, segments };
+        }
+
+        // =========================================================================
+        // محرك B-Roll المحلي الآمن المحدث (In-Memory Blob Buffer)
+        // =========================================================================
+        async function fetchAndPrepareBrollSampler(videoUrl, options = {}) {
+            logToConsole("بدء جلب فيديو B-roll كـ Blob محلي لتفادي مشاكل الشبكة والـ CORS...", "info");
+
+            let finalSrc = videoUrl;
+            let isLocalBlob = false;
+            let fileSizeBytes = 0;
+
+            try {
+                const res = await fetch(videoUrl);
+                if (res.ok) {
+                    const arrayBuf = await res.arrayBuffer();
+                    fileSizeBytes = arrayBuf.byteLength;
+                    const blob = new Blob([arrayBuf], { type: 'video/mp4' });
+                    finalSrc = URL.createObjectURL(blob);
+                    isLocalBlob = true;
+                    logToConsole(`تم حفظ الفيديو محلياً في الذاكرة بنجاح (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB) ✓`, "info");
+                }
+            } catch (err) {
+                logToConsole("تنبيه: سيتم الاعتماد على الرابط المباشر: " + err.message, "warn");
+            }
+
+            const videoEl = document.createElement('video');
+            if (!isLocalBlob) {
+                videoEl.crossOrigin = 'anonymous';
+            }
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.preload = 'auto';
+            videoEl.src = finalSrc;
+
+            await new Promise((resolve, reject) => {
+                let isReady = false;
+                const onReady = () => {
+                    if (!isReady) {
+                        isReady = true;
+                        resolve();
+                    }
+                };
+                videoEl.onloadeddata = onReady;
+                videoEl.oncanplay = onReady;
+                videoEl.onloadedmetadata = onReady;
+                videoEl.onerror = () => {
+                    const err = videoEl.error;
+                    const detail = err ? ` (code ${err.code}: ${err.message})` : '';
+                    reject(new Error(`خطأ في عنصر الفيديو${detail}: ${videoUrl}`));
+                };
+                videoEl.load();
+            });
+
+            const targetW = options.width || CONFIG.width;
+            const targetH = options.height || CONFIG.height;
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = targetW;
+            sampleCanvas.height = targetH;
+            const sampleCtx = sampleCanvas.getContext('2d');
+
+            return {
+                videoEl,
+                fileSizeBytes,
+                duration: videoEl.duration || 10,
+                async getFrameAt(time) {
+                    const maxDur = videoEl.duration && !isNaN(videoEl.duration) ? videoEl.duration : 10;
+                    const seekTime = Math.min(Math.max(time, 0), Math.max(maxDur - 0.01, 0));
+
+                    await new Promise((resolve) => {
+                        videoEl.onseeked = resolve;
+                        videoEl.currentTime = seekTime;
+                    });
+
+                    const vw = videoEl.videoWidth || targetW;
+                    const vh = videoEl.videoHeight || targetH;
+                    const scale = Math.max(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    sampleCtx.clearRect(0, 0, targetW, targetH);
+                    sampleCtx.drawImage(videoEl, dx, dy, dw, dh);
+                    return sampleCanvas;
+                }
+            };
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                // ضبط تجاوب إطار العرض تلقائياً مع أبعاد CONFIG المحددة بالـ vh و vw
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
