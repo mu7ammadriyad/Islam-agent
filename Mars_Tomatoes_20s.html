@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>طماطم على المريخ - 20 ثانية</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        /* إطار المعاينة المتجاوب بالكامل مع كافة الشاشات بالـ vh و vw */
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f5;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // ============ IDENTITY LAYER (CUSTOM MOTION ENGINE) ============
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+        // ---------- العقد: الأسماء التي تستدعيها الطبقة الثابتة بالاسم ----------
+        const CONFIG = { fps: 30, width: 1920, height: 1080, duration: 20 };   // 16:9 افتراضياً (مربع 1080×1080، رأسي 1080×1920)
+        const OUTPUT_FILENAME = 'tomatoes_on_mars_20s';                      // بدون امتداد
+        let audioBuffer = null;                                                 // يُملأ في prepareIdentity عند وجود صوت
+
+        // ---------- إعدادات هذا الفيديو ----------
+        const AUDIO_URLS = [];            // روابط https مباشرة للصوت (GitHub raw)؛ فارغة = بلا صوت
+        const TITLE = '#طماطم_على_المريخ';   // الهاشتاج أعلى اليمين
+        const BASE = 20;                  // مدة توقيت المشاهد التقديري بالثواني (تمتد على مدة الصوت إن وُجد)
+        const W = CONFIG.width, H = CONFIG.height;
+
+        // ---------- أدوات أساسية ----------
+        const C = clamp01;                                                       // clamp01 من الطبقة الثابتة
+        const E = v => 1 - Math.pow(1 - C(v), 3);                                // cubic out (ظهور ناعم)
+        const EI = v => { v = C(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };   // in-out (حركات طويلة)
+        const ER = v => { v = C(v); return v >= 1 ? 1 : 1 - Math.pow(2, -10 * v); };                      // expo out (الفتح)
+        const win = (t, a, b, f = .22) => C((t - a) / f) * C((b - t) / f);       // نافذة ظهور/اختفاء المشهد
+        const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // عشوائي حتمي (لا Math.random)
+        const INK = '#1c1917';
+        const FB = "'Readex Pro', sans-serif", FD = "'Lalezar', 'Readex Pro', sans-serif", FQ = "'Amiri', serif", FL = "'Space Grotesk', sans-serif";
+
+        async function loadFonts() {
+            const l = document.createElement('link'); l.rel = 'stylesheet';
+            l.href = 'https://fonts.googleapis.com/css2?family=Lalezar&family=Readex+Pro:wght@400;500;600;700&family=Amiri:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap';
+            document.head.appendChild(l);
+            await Promise.all(['400 40px Lalezar', '600 40px "Readex Pro"', '700 40px "Readex Pro"', '700 40px Amiri', '700 40px "Space Grotesk"'].map(f => document.fonts.load(f, 'ابج 123 Abc')));
+        }
+
+        // نص بقناع صاعد: كلما قلّ al ارتفع النص من الأسفل (بدون pop)
+        function T(s, x, y, size, w = '600', col = '#000', al = 1, align = 'center', dir = 'rtl', fam = FB) {
+            const k = Math.min(1, al); if (k <= 0.01) return;
+            ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * .85, W, size * 1.7); ctx.clip();
+            ctx.globalAlpha = k; ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = dir;
+            ctx.fillText(s, x, y + (1 - k) * size * .9); ctx.restore();
+        }
+        const N = (s, x, y, size, w = '700', col = '#000', al = 1) => T(s, x, y, size, w, col, al, 'center', 'ltr', FL);   // أرقام/لاتيني
+        const gr = (x0, y0, x1, y1, c) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, c[0]); g.addColorStop(1, c[1]); return g; };
+        function rect(x, y, w, h, col, al = 1, r = 0) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); ctx.restore(); }
+        function circ(x, y, r, col, al = 1) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+        function ln(x1, y1, x2, y2, st, w, al) { ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = st; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); }
+        const IR = (cx, cy, R, p, fn) => { if (p <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R * p, 0, 7); ctx.clip(); fn(); ctx.restore(); };   // فتح بدائرة (iris)
+
+        // ---------- Pseudo-3D (2.5D) على ctx ----------
+        // نظام الإحداثيات: x يمين، y لأسفل، z للعمق (الأكبر = أبعد). الأصل = مركز الشاشة (CAM.cx, CAM.cy).
+        const CAM = { f: 900, cx: W / 2, cy: H / 2 };
+        const rotX3 = (p, a) => ({ x: p.x, y: p.y * Math.cos(a) - p.z * Math.sin(a), z: p.y * Math.sin(a) + p.z * Math.cos(a) });
+        const rotY3 = (p, a) => ({ x: p.x * Math.cos(a) + p.z * Math.sin(a), y: p.y, z: -p.x * Math.sin(a) + p.z * Math.cos(a) });
+        const proj = p => { const k = CAM.f / (CAM.f + p.z); return { x: CAM.cx + p.x * k, y: CAM.cy + p.y * k, k }; };
+        function shade(hexc, f) { const c = [1, 3, 5].map(i => parseInt(hexc.substr(i, 2), 16)), t = f < 0 ? 0 : 255, p = Math.abs(f); return `rgb(${c.map(v => Math.round(v + (t - v) * p)).join(',')})`; }   // f من -1 (أغمق) إلى 1 (أفتح)
+        function poly(pts, fill, al = 1, stroke = null, lw = 3) { ctx.save(); ctx.globalAlpha = al; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke(); } ctx.restore(); }
+        function box3(cx, cy, cz, w, h, d, ry, rx, col, al = 1) {   // صندوق دوّار بمنظور وتظليل Lambert وترتيب بالعمق
+            const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(([x, y, z]) => { const p = rotX3(rotY3({ x: x * w / 2, y: y * h / 2, z: z * d / 2 }, ry), rx); return { x: p.x + cx, y: p.y + cy, z: p.z + cz }; });
+            const F = [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [4, 5, 1, 0], [3, 2, 6, 7]], L = { x: -.45, y: -.7, z: -.55 }, ll = Math.hypot(L.x, L.y, L.z);
+            F.map(f => { const p = f.map(i => V[i]), c = { x: (p[0].x + p[2].x) / 2, y: (p[0].y + p[2].y) / 2, z: (p[0].z + p[2].z) / 2 };
+                const a = { x: p[1].x - p[0].x, y: p[1].y - p[0].y, z: p[1].z - p[0].z }, b = { x: p[3].x - p[0].x, y: p[3].y - p[0].y, z: p[3].z - p[0].z };
+                let n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; const nl = Math.hypot(n.x, n.y, n.z) || 1; n = { x: n.x / nl, y: n.y / nl, z: n.z / nl };
+                if (n.x * (c.x - cx) + n.y * (c.y - cy) + n.z * (c.z - cz) < 0) n = { x: -n.x, y: -n.y, z: -n.z };   // اجعل العمودي للخارج دائماً
+                return { p, n, c }; })
+                .filter(o => o.n.x * o.c.x + o.n.y * o.c.y + o.n.z * (o.c.z + CAM.f) < 0)                             // الوجوه المواجهة للكاميرا فقط
+                .sort((a, b) => b.c.z - a.c.z)                                                                          // الأبعد أولاً
+                .forEach(o => poly(o.p.map(proj), shade(col, Math.max(0, (o.n.x * L.x + o.n.y * L.y + o.n.z * L.z) / ll) * .65 - .3), al, shade(col, -.45), 3));
+        }
+        function sphere3(cx, cy, cz, r, col, al = 1) { const q = proj({ x: cx, y: cy, z: cz }), rr = r * q.k; ctx.save(); ctx.globalAlpha = al; const g = ctx.createRadialGradient(q.x - rr * .35, q.y - rr * .38, rr * .1, q.x, q.y, rr); g.addColorStop(0, shade(col, .55)); g.addColorStop(.6, col); g.addColorStop(1, shade(col, -.5)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, rr, 0, 7); ctx.fill(); ctx.restore(); return q; }
+        function shadow3(x, y, z, rx, al = .2) { const q = proj({ x, y, z }); ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(q.x, q.y, rx * q.k, rx * q.k * .28, 0, 0, 7); ctx.fill(); ctx.restore(); }
+
+        // ---------- Three.js (3D حقيقي): فعّله بحذف البادئة من الأسطر المعنية ----------
+        let R3 = null; const M3 = {};
+        function init3D() {   // يُستدعى مرة واحدة داخل prepareIdentity
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setPixelRatio(1); renderer.setSize(CONFIG.width, CONFIG.height, false); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.SRGBColorSpace;
+            const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(35, CONFIG.width / CONFIG.height, .1, 100); camera.position.set(0, 0, 8);
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x8a94a6, 1.1));
+            const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(3, 5, 6); scene.add(key);
+            const rim = new THREE.DirectionalLight(0xffffff, .8); rim.position.set(-4, 2, -3); scene.add(rim);
+            R3 = { renderer, scene, camera };
+        }
+        function render3D(al = 1) { R3.renderer.render(R3.scene, R3.camera); ctx.save(); ctx.globalAlpha = al; ctx.drawImage(R3.renderer.domElement, 0, 0, W, H); ctx.restore(); }   // تركيب فوق ctx
+        function canvasTexture(drawFn, w = 1024, h = 512) { const c = document.createElement('canvas'); c.width = w; c.height = h; drawFn(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }   // للنص العربي على الخامات
+
+        // ===== LIBRARY: BEGIN =====
+        const G3 = {};   // مجموعات 3D: mars / drop / house / hero (تُبدَّل رؤيتها بـ show)
+        function show(name) { Object.keys(G3).forEach(k => { G3[k].visible = (k === name); }); }
+
+        function makeTomato() {   // طماطم: جسم أحمر مفلطح + 5 سبلات خضراء + عنق
+            const g = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: .35, metalness: 0 }));
+            body.scale.set(1, .86, 1); g.add(body);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: .6 });
+            for (let i = 0; i < 5; i++) {
+                const a = i / 5 * Math.PI * 2, leaf = new THREE.Mesh(new THREE.ConeGeometry(.2, .62, 8), leafMat);
+                leaf.position.set(Math.cos(a) * .3, .8, Math.sin(a) * .3);
+                leaf.quaternion.setFromAxisAngle(new THREE.Vector3(Math.sin(a), 0, -Math.cos(a)), 1.15); g.add(leaf);
+            }
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, .32, 10), new THREE.MeshStandardMaterial({ color: 0x5d7f2e, roughness: .7 })); stem.position.y = .98; g.add(stem);
+            return g;
+        }
+        function makeMars() {     // كوكب بخامة مرسومة بالكود (حتمية)
+            const tex = canvasTexture((g, w, h) => {
+                const bg = g.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#d8c3b0'); bg.addColorStop(.12, '#b5532f'); bg.addColorStop(.88, '#a64a2a'); bg.addColorStop(1, '#d8c3b0'); g.fillStyle = bg; g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 420; i++) { const r = 6 + rnd(i + 900) * 46; g.fillStyle = i % 3 ? `rgba(90,40,22,${.08 + rnd(i + 5) * .14})` : `rgba(235,150,100,${.06 + rnd(i + 7) * .1})`; g.beginPath(); g.ellipse(rnd(i) * w, h * (.12 + rnd(i + 500) * .76), r * 1.8, r, rnd(i + 3) * 3, 0, 7); g.fill(); }
+                g.fillStyle = 'rgba(70,32,18,.35)'; g.beginPath(); g.ellipse(w * .55, h * .5, w * .09, h * .12, .4, 0, 7); g.fill();
+            }, 1024, 512);
+            const grp = new THREE.Group(); grp.add(new THREE.Mesh(new THREE.SphereGeometry(2.4, 64, 48), new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0 }))); return grp;
+        }
+        function makeDrop() {     // طماطمتان تسقطان: الأرض يميناً والمريخ يساراً
+            const g = new THREE.Group(), earth = makeTomato(), mars = makeTomato(), sh = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .2 });
+            earth.scale.setScalar(.7); mars.scale.setScalar(.7); g.add(earth); g.add(mars);
+            [2.2, -2.2].forEach(x => { const d = new THREE.Mesh(new THREE.CircleGeometry(.75, 32), sh); d.rotation.x = -Math.PI / 2; d.position.set(x, -1.79, 0); g.add(d); });
+            g.userData = { earth, mars }; return g;
+        }
+        function makeHouse() {    // بيت زجاجي مضغوط على تربة المريخ مع نبتة طماطم
+            const g = new THREE.Group();
+            const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 64), new THREE.MeshStandardMaterial({ color: 0xb5532f, roughness: 1 })); ground.rotation.x = -Math.PI / 2; g.add(ground);
+            for (let i = 0; i < 14; i++) { const a = rnd(i) * 6.283, r = 3.2 + rnd(i + 20) * 4.5, s = .12 + rnd(i + 40) * .3, rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), new THREE.MeshStandardMaterial({ color: 0x8a4b33, roughness: 1 })); rock.position.set(Math.cos(a) * r, s * .5, Math.sin(a) * r); rock.rotation.set(rnd(i + 60) * 3, rnd(i + 80) * 3, 0); g.add(rock); }
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, .07, 12, 64), new THREE.MeshStandardMaterial({ color: 0xaab2bd, metalness: .6, roughness: .4 })); ring.rotation.x = Math.PI / 2; ring.position.y = .05; g.add(ring);
+            g.add(new THREE.Mesh(new THREE.SphereGeometry(2.2, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: 0xcfe9f7, transparent: true, opacity: .22, roughness: .05, side: THREE.DoubleSide, depthWrite: false })));
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(.06, .09, 1.7, 10), new THREE.MeshStandardMaterial({ color: 0x4f7a2a, roughness: .8 })); stem.position.y = .85; g.add(stem);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f8f35, roughness: .7 });
+            for (let i = 0; i < 6; i++) { const a = i * 1.05, leaf = new THREE.Mesh(new THREE.SphereGeometry(.34, 16, 12), leafMat); leaf.scale.set(1.5, .12, .7); leaf.position.set(Math.cos(a) * .5, .5 + i * .22, Math.sin(a) * .5); leaf.rotation.set(0, -a, .25); g.add(leaf); }
+            [[.5, 1.0, .3], [-.45, .8, .35], [.1, 1.3, -.5]].forEach(([x, y, z]) => { const t = makeTomato(); t.scale.setScalar(.2); t.position.set(x, y, z); g.add(t); });
+            return g;
+        }
+        function build3D() { G3.mars = makeMars(); G3.drop = makeDrop(); G3.house = makeHouse(); G3.hero = makeTomato(); Object.values(G3).forEach(o => R3.scene.add(o)); }
+
+        function stars(al) { for (let i = 0; i < 90; i++) circ(rnd(i) * W, rnd(i + 90) * H, .8 + rnd(i + 180) * 1.6, '#fff', al * (.35 + .65 * rnd(i + 270))); }
+        function donut(cx, cy, R, f, c1, c2, al) { ctx.save(); ctx.globalAlpha = al; ctx.lineWidth = 70; ctx.strokeStyle = c2; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke(); ctx.strokeStyle = c1; ctx.beginPath(); ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + 6.2832 * f); ctx.stroke(); ctx.restore(); }
+        // ===== LIBRARY: END =====
+
+        async function prepareIdentity() {
+            try { await loadFonts(); } catch (e) { logToConsole('تعذّر تحميل الخطوط: ' + e.message, 'warn'); }
+            if (AUDIO_URLS.length) {
+                const bufs = [];
+                for (const u of AUDIO_URLS) bufs.push(await fetchAndDecodeAudio(u));
+                audioBuffer = concatenateAudioBuffers(bufs).buffer;   // يرجع { buffer, segments }
+                CONFIG.duration = audioBuffer.duration;               // مدة الفيديو = مدة الصوت
+            }
+            init3D(); build3D();
+        }
+
+        // ===== SCENES: BEGIN =====
+        async function drawSceneAtTime(time) {
+            const tt = time * BASE / CONFIG.duration;   // زمن المشاهد (ثوانٍ)
+            const mt = tt * .6;                         // زمن الحركة المتباطئ
+            ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H);
+            let dk = 0;
+            const S = (a, b, fn) => { const al = win(tt, a, b); if (al > 0) fn(tt - a, al); };
+            const P = (u, d) => E(u / d);
+            const BG = al => { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#141210'; ctx.fillRect(0, 0, W, H); ctx.restore(); dk = Math.max(dk, al); };
+
+            // 1 (0–2.2) «هل تنمو الطماطم على المريخ؟»: كوكب 3D بخامة مرسومة
+            S(0, 2.2, (u, al) => {
+                BG(al); stars(al); show('mars'); G3.mars.rotation.set(.25, mt * .5 + .6, 0); R3.camera.position.set(0, 0, 8.4); R3.camera.lookAt(0, 0, 0);
+                render3D(al * ER(u / .9));
+                T('هل تنمو الطماطم على المريخ؟', W / 2, H - 110, 68, '700', '#fff', al * P(u - .4, .8));
+            });
+
+            // 2 (2.2–6.1) الجاذبية: طماطمتان تسقطان بتسارعين مختلفين (3D) — الأرض يميناً والمريخ يساراً
+            S(2.2, 6.1, (u, al) => {
+                BG(al); show('drop');
+                const t0 = Math.max(0, (u % 2.8) - .45), yE = 1.3 - 2.5 * Math.pow(Math.min(1, t0 / 1.0), 2), yM = 1.3 - 2.5 * Math.pow(Math.min(1, t0 / 1.626), 2), d = G3.drop.userData;   // 1.626 = 1/√0.378
+                d.earth.position.set(2.2, yE, 0); d.mars.position.set(-2.2, yM, 0); d.earth.rotation.set(.2, mt * 1.2, .1); d.mars.rotation.set(.2, mt * 1.2 + 1, -.1);
+                R3.camera.position.set(0, -.3, 9); R3.camera.lookAt(0, -.5, 0); render3D(al * ER(u / .8));
+                N('38%', W / 2, 190, 130, '700', '#e07b4c', al * P(u - .3, .6)); T('جاذبية المريخ مقارنةً بالأرض', W / 2, 290, 44, '600', '#e5e7eb', al * P(u - .6, .6));
+                T('الأرض', W * .72, 890, 52, '700', '#fff', al * P(u - .5, .6)); N('9.8 m/s²', W * .72, 965, 42, '600', '#e5e7eb', al * P(u - .7, .6));
+                T('المريخ', W * .28, 890, 52, '700', '#e07b4c', al * P(u - .6, .6)); N('3.7 m/s²', W * .28, 965, 42, '600', '#e5e7eb', al * P(u - .8, .6));
+            });
+
+            // 3 (6.1–9.1) الهواء الرقيق: 95% ثاني أكسيد الكربون و0.6% من ضغط الأرض (2D)
+            S(6.1, 9.1, (u, al) => {
+                BG(al); const f = .95 * EI(u / 1.6);
+                donut(W * .3, H * .5, 230, f, '#d9a066', '#e8d8c3', al * ER(u / .7));
+                N(Math.round(f * 100) + '%', W * .3, H * .5, 120, '700', '#fff', al * P(u - .2, .6));
+                T('ثاني أكسيد الكربون', W * .3, H * .5 + 330, 46, '700', '#d9a066', al * P(u - .8, .6));
+                N('0.6%', W * .7, H * .46, 150, '700', '#fff', al * P(u - .6, .6)); T('من ضغط هواء الأرض فقط', W * .7, H * .46 + 130, 46, '600', '#e5e7eb', al * P(u - 1, .6));
+            });
+
+            // 4 (9.1–11.7) الحرارة: من مجال الطماطم 20–25° إلى حوالي −60° (2D)
+            S(9.1, 11.7, (u, al) => {
+                const x0 = W * .4, top = 220, bot = 840, y = v => bot - (v + 80) / 120 * (bot - top), v = 22 - 82 * EI((u - .25) / 1.9), col = v >= 0 ? '#e53935' : '#4aa3df';
+                rect(x0 - 28, top - 30, 56, bot - top + 70, '#fff', al, 28); ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect(x0 - 28, top - 30, 56, bot - top + 70, 28); ctx.stroke(); ctx.restore();
+                rect(x0 - 12, y(v), 24, bot - y(v) + 30, col, al, 10); circ(x0, bot + 38, 44, col, al);
+                rect(x0 + 40, y(25), 36, y(20) - y(25), '#43a047', al * P(u, .6), 8); T('نطاق الطماطم', x0 + 100, y(22.5), 38, '700', '#2e7d32', al * P(u - .4, .6), 'left');
+                ln(x0 + 40, y(0), x0 + 100, y(0), '#6b7280', 4, al); N('0°', x0 + 150, y(0), 36, '600', '#555', al);
+                N(Math.round(v) + '°C', W * .68, H * .46, 150, '700', v < 0 ? '#1e88e5' : '#c62828', al * P(u - .1, .5)); T('حرارة المريخ المتوسطة', W * .68, H * .46 + 120, 46, '600', '#000', al * P(u - .6, .6));
+            });
+
+            // 5 (11.7–14.3) التربة: كتلة Pseudo-3D دوّارة وبلورات أملاح بيضاء وعلامة تحذير
+            S(11.7, 14.3, (u, al) => {
+                const ry = mt * .6 + .4;
+                shadow3(-260, 250, 200, 380, al * .18); box3(-260, 90, 200, 520, 190, 360, ry, .5, '#b5532f', al * ER(u / .8));
+                [[-410, 110, 30, 60], [-250, 150, 10, 78], [-90, 100, 50, 56]].forEach(([x, y, z, s], i) => box3(x, y, z, s, s, s, mt * 1.4 + i * 2, .4, '#f5f5f5', al * P(u - .5 - i * .2, .5)));
+                ctx.save(); ctx.globalAlpha = al * P(u - .3, .6); ctx.translate(W * .72, H * .36); ctx.fillStyle = '#ffc107'; ctx.beginPath(); ctx.moveTo(0, -110); ctx.lineTo(105, 75); ctx.lineTo(-105, 75); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#1c1917'; ctx.lineWidth = 8; ctx.lineJoin = 'round'; ctx.stroke(); ctx.restore();
+                N('!', W * .72, H * .36 + 15, 120, '700', '#1c1917', al * P(u - .3, .6));
+                T('بيركلورات', W * .72, H * .36 + 170, 62, '700', '#000', al * P(u - .6, .6)); T('أملاحٌ سامّة في التربة', W * .72, H * .36 + 250, 44, '600', '#555', al * P(u - .9, .6));
+            });
+
+            // 6 (14.3–17.8) الحل: بيت زجاجي مضغوط (3D) والكاميرا تدور حوله
+            S(14.3, 17.8, (u, al) => {
+                ctx.save(); ctx.globalAlpha = al; const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#3b2a22'); sky.addColorStop(.6, '#b87a4e'); sky.addColorStop(1, '#d9a066'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H); ctx.restore(); dk = Math.max(dk, al);
+                show('house'); const a = -.6 + EI(u / 3.4) * 1.3; R3.camera.position.set(Math.sin(a) * 8.6, 2.6, Math.cos(a) * 8.6); R3.camera.lookAt(0, .9, 0); render3D(al * ER(u / .8));
+                T('بيتٌ زجاجيٌّ مضغوط', W / 2, H - 150, 64, '700', '#fff', al * P(u - .5, .7)); T('وتربةٌ مغسولة', W / 2, H - 80, 44, '600', '#ffe0b2', al * P(u - 1.1, .7));
+            });
+
+            // 7 (17.8–20.4) الخاتمة: طماطم 3D كبيرة تدور (خلفية فاتحة)
+            S(17.8, 20.4, (u, al) => {
+                show('hero'); G3.hero.scale.setScalar(1.6); G3.hero.position.set(1.8, 0, 0); G3.hero.rotation.set(.35, .8 + EI(u / 2.4) * 2.4, .08);
+                R3.camera.position.set(0, 0, 7); R3.camera.lookAt(0, 0, 0); render3D(al * ER(u / .8));
+                T('أولُ حصادٍ', W * .3, H * .44, 140, '400', '#000', al * P(u - .3, .8), 'center', 'rtl', FD); T('على كوكبٍ آخر', W * .3, H * .44 + 150, 84, '400', '#c62828', al * P(u - .8, .8), 'center', 'rtl', FD);
+            });
+
+            const c = Math.round(255 * dk); T(TITLE, W - 96, 96, 36, '600', `rgb(${c},${c},${c})`, 1, 'right', 'rtl');   // الهاشتاج آخر شيء
+        }
+        // ===== SCENES: END =====
+
+        // ============ FIXED TECHNICAL LAYER (RUNTIME ENGINE) ============
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clamp01(val) { return Math.max(0, Math.min(1, val)); }
+
+        function layoutArabicParagraph(text, font, maxWidth, wordGap, lineHeight, centerY) {
+            ctx.font = font;
+            const words = text.split(' ');
+            const lines = [];
+            let currentWords = [], currentWidth = 0;
+
+            words.forEach(w => {
+                const wordWidth = ctx.measureText(w).width;
+                const testWidth = currentWidth + (currentWords.length > 0 ? wordGap : 0) + wordWidth;
+                if (testWidth > maxWidth && currentWords.length > 0) {
+                    lines.push({ words: currentWords, width: currentWidth });
+                    currentWords = []; currentWidth = 0;
+                }
+                currentWords.push({ text: w, width: wordWidth });
+                currentWidth += (currentWords.length > 1 ? wordGap : 0) + wordWidth;
+            });
+            if (currentWords.length) lines.push({ words: currentWords, width: currentWidth });
+
+            const totalHeight = lines.length * lineHeight;
+            const startY = centerY - totalHeight / 2 + lineHeight / 2;
+            const flatWords = [];
+
+            lines.forEach((line, li) => {
+                const lineY = startY + li * lineHeight;
+                let currentX = (CONFIG.width / 2) + (line.width / 2);
+                line.words.forEach(w => {
+                    const wx = currentX - w.width;
+                    flatWords.push({ text: w.text, x: wx + w.width / 2, y: lineY });
+                    currentX -= (w.width + wordGap);
+                });
+            });
+            return flatWords;
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function concatenateAudioBuffers(buffers) {
+            if (!buffers || buffers.length === 0) throw new Error("لا يوجد AudioBuffer للتجميع");
+            const sampleRate = buffers[0].sampleRate;
+            const channelsCount = buffers[0].numberOfChannels;
+            const totalSamples = buffers.reduce((sum, b) => sum + b.length, 0);
+            const combined = getSharedAudioContext().createBuffer(channelsCount, totalSamples, sampleRate);
+
+            let sampleOffset = 0, timeOffset = 0.0;
+            const segments = [];
+
+            for (const buf of buffers) {
+                for (let ch = 0; ch < channelsCount; ch++) {
+                    combined.getChannelData(ch).set(buf.getChannelData(ch), sampleOffset);
+                }
+                const duration = buf.duration;
+                segments.push({ start: timeOffset, end: timeOffset + duration, duration });
+                sampleOffset += buf.length;
+                timeOffset += duration;
+            }
+            return { buffer: combined, segments };
+        }
+
+        // =========================================================================
+        // محرك B-Roll المحلي الآمن المحدث (In-Memory Blob Buffer)
+        // =========================================================================
+        async function fetchAndPrepareBrollSampler(videoUrl, options = {}) {
+            logToConsole("بدء جلب فيديو B-roll كـ Blob محلي لتفادي مشاكل الشبكة والـ CORS...", "info");
+
+            let finalSrc = videoUrl;
+            let isLocalBlob = false;
+            let fileSizeBytes = 0;
+
+            try {
+                const res = await fetch(videoUrl);
+                if (res.ok) {
+                    const arrayBuf = await res.arrayBuffer();
+                    fileSizeBytes = arrayBuf.byteLength;
+                    const blob = new Blob([arrayBuf], { type: 'video/mp4' });
+                    finalSrc = URL.createObjectURL(blob);
+                    isLocalBlob = true;
+                    logToConsole(`تم حفظ الفيديو محلياً في الذاكرة بنجاح (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB) ✓`, "info");
+                }
+            } catch (err) {
+                logToConsole("تنبيه: سيتم الاعتماد على الرابط المباشر: " + err.message, "warn");
+            }
+
+            const videoEl = document.createElement('video');
+            if (!isLocalBlob) {
+                videoEl.crossOrigin = 'anonymous';
+            }
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.preload = 'auto';
+            videoEl.src = finalSrc;
+
+            await new Promise((resolve, reject) => {
+                let isReady = false;
+                const onReady = () => {
+                    if (!isReady) {
+                        isReady = true;
+                        resolve();
+                    }
+                };
+                videoEl.onloadeddata = onReady;
+                videoEl.oncanplay = onReady;
+                videoEl.onloadedmetadata = onReady;
+                videoEl.onerror = () => {
+                    const err = videoEl.error;
+                    const detail = err ? ` (code ${err.code}: ${err.message})` : '';
+                    reject(new Error(`خطأ في عنصر الفيديو${detail}: ${videoUrl}`));
+                };
+                videoEl.load();
+            });
+
+            const targetW = options.width || CONFIG.width;
+            const targetH = options.height || CONFIG.height;
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = targetW;
+            sampleCanvas.height = targetH;
+            const sampleCtx = sampleCanvas.getContext('2d');
+
+            return {
+                videoEl,
+                fileSizeBytes,
+                duration: videoEl.duration || 10,
+                async getFrameAt(time) {
+                    const maxDur = videoEl.duration && !isNaN(videoEl.duration) ? videoEl.duration : 10;
+                    const seekTime = Math.min(Math.max(time, 0), Math.max(maxDur - 0.01, 0));
+
+                    await new Promise((resolve) => {
+                        videoEl.onseeked = resolve;
+                        videoEl.currentTime = seekTime;
+                    });
+
+                    const vw = videoEl.videoWidth || targetW;
+                    const vh = videoEl.videoHeight || targetH;
+                    const scale = Math.max(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    sampleCtx.clearRect(0, 0, targetW, targetH);
+                    sampleCtx.drawImage(videoEl, dx, dy, dw, dh);
+                    return sampleCanvas;
+                }
+            };
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                // ضبط تجاوب إطار العرض تلقائياً مع أبعاد CONFIG المحددة بالـ vh و vw
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
