@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Earth Flight Egypt to USA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050505;font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;overflow:hidden}
+#viewport{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:2vh}
+canvas#c{background:#f5f5f5;border-radius:8px;max-width:100%;max-height:100%;aspect-ratio:16/9;box-shadow:0 0 80px rgba(0,0,0,.6)}
+#hud{position:absolute;top:4vh;left:4vw;background:rgba(255,255,255,.95);border:1px solid #000;border-radius:999px;padding:1.2vh 2.5vw;font-size:14px;font-weight:600;z-index:100}
+#controls{position:absolute;bottom:5vh;display:flex;gap:15px;z-index:100;background:rgba(255,255,255,.95);padding:1.5vh 3vw;border-radius:999px}
+.btn{font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;padding:10px 24px;border-radius:999px;border:1px solid #000;background:#000;color:#fff}
+</style>
+</head>
+<body>
+<div id="viewport">
+  <canvas id="c" width="1920" height="1080"></canvas>
+  <div id="hud"><span id="status">جاري التحميل...</span></div>
+  <div id="controls"><button class="btn" id="btn-replay">إعادة المعاينة</button></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+const W = 1920, H = 1080, DUR = 20, TITLE = '#رحلة_إلى_أمريكا';
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const $status = document.getElementById('status'), btnReplay = document.getElementById('btn-replay');
+const setStatus = s => { $status.textContent = s; };
+
+// ---------- بيانات الخريطة: Natural Earth عبر world-atlas (تُحمَّل وقت التشغيل) ----------
+const SRC = ['https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json', 'https://unpkg.com/world-atlas@2/countries-110m.json'];
+const AR = { 'Egypt': 'مصر', 'Saudi Arabia': 'السعودية', 'Libya': 'ليبيا', 'Sudan': 'السودان', 'Algeria': 'الجزائر', 'Turkey': 'تركيا', 'Iran': 'إيران', 'Iraq': 'العراق', 'Ethiopia': 'إثيوبيا', 'Morocco': 'المغرب', 'Nigeria': 'نيجيريا', 'Dem. Rep. Congo': 'الكونغو الديمقراطية', 'South Africa': 'جنوب أفريقيا', 'Russia': 'روسيا', 'China': 'الصين', 'India': 'الهند', 'Pakistan': 'باكستان', 'Kazakhstan': 'كازاخستان', 'Indonesia': 'إندونيسيا', 'Japan': 'اليابان', 'Australia': 'أستراليا', 'France': 'فرنسا', 'Germany': 'ألمانيا', 'Spain': 'إسبانيا', 'Italy': 'إيطاليا', 'United Kingdom': 'المملكة المتحدة', 'United States of America': 'الولايات المتحدة', 'Canada': 'كندا', 'Mexico': 'المكسيك', 'Brazil': 'البرازيل', 'Argentina': 'الأرجنتين' };
+const OV = { 'Russia': [61, 95], 'United States of America': [39, -98], 'Canada': [59, -104], 'Australia': [-25, 134], 'Brazil': [-10, -52], 'China': [35, 103], 'France': [46.5, 2.5], 'Egypt': [26.5, 29.8], 'Saudi Arabia': [24, 45], 'Algeria': [28, 2], 'Libya': [27, 17], 'Sudan': [15, 30], 'Iran': [32.5, 54], 'Dem. Rep. Congo': [-3, 23] };
+const CONT = [['أفريقيا', 3, 20], ['آسيا', 47, 90], ['أوروبا', 54, 18], ['أمريكا الشمالية', 46, -102], ['أمريكا الجنوبية', -14, -60], ['أوقيانوسيا', -25, 134], ['أنتاركتيكا', -78, 20]];
+const OCE = [['المحيط الأطلسي', 8, -33], ['المحيط الهادئ', -2, -140], ['المحيط الهندي', -20, 78]];
+const PAL = ['#6f9a63', '#8aa869', '#a8b27a', '#c2b27c', '#7c9e8a', '#9aa57a', '#b8a07a', '#83a07a'];
+const LAB = [];
+
+// ---------- أدوات ----------
+const C = v => Math.max(0, Math.min(1, v));
+const sm = (a, b, v) => { const t = C((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+const ee = k => k * k * k * (k * (6 * k - 15) + 10);
+const FB = "'Readex Pro', sans-serif";
+function T(s, x, y, size, w = '600', col = '#000', al = 1, align = 'center') {
+  if (al <= 0.01) return; ctx.save(); ctx.globalAlpha = Math.min(1, al); ctx.fillStyle = col; ctx.font = `${w} ${size}px ${FB}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = 'rtl'; ctx.fillText(s, x, y); ctx.restore();
+}
+const ll2v = (lat, lon, r = 1) => { const a = lat * Math.PI / 180, o = lon * Math.PI / 180; return new THREE.Vector3(r * Math.cos(a) * Math.cos(o), r * Math.sin(a), -r * Math.cos(a) * Math.sin(o)); };
+
+function noise(w, h, seed, oct) {   // ضوضاء قيم متدرجة (fBm) قابلة للتكرار أفقياً، تُستخدم للسحب وتبقيع الألوان
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'), im = g.createImageData(w, h), d = im.data;
+  const hs = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453; return s - Math.floor(s); };
+  const val = (u, v, f) => { const fx = u * f, fy = v * f, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty), xa = ((x0 % f) + f) % f, xb = (((x0 + 1) % f) + f) % f;
+    const a = hs(xa, y0), b = hs(xb, y0), c = hs(xa, y0 + 1), e = hs(xb, y0 + 1); return a + (b - a) * sx + (c - a) * sy + (a - b - c + e) * sx * sy; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = 0, amp = .5, f = 4, tot = 0; for (let o = 0; o < oct; o++) { v += amp * val(x / w, y / h, f); tot += amp; amp *= .5; f *= 2; } v /= tot; const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(255 * v); }
+  g.putImageData(im, 0, 0); return cv;
+}
+
+// ---------- three.js ----------
+let renderer, scene, camera, earth, clouds, sun, TW = 4096, TH = 2048, ready = false;
+function initGL() {
+  const gl = document.createElement('canvas'); gl.width = W; gl.height = H;
+  renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: true, alpha: true }); renderer.setPixelRatio(1); renderer.setSize(W, H, false); renderer.outputEncoding = THREE.sRGBEncoding; renderer.setClearColor(0x000000, 0);
+  TW = Math.min(4096, (renderer.capabilities && renderer.capabilities.maxTextureSize) || 4096); TH = TW / 2;
+  scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(32, W / H, .05, 200);
+  scene.add(new THREE.AmbientLight(0x6d86a8, .55)); sun = new THREE.DirectionalLight(0xfff2dd, 1.35); scene.add(sun);
+  const base = document.createElement('canvas'); base.width = TW; base.height = TH; ocean(base.getContext('2d'), TW, TH);
+  earth = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), new THREE.MeshPhongMaterial({ map: mkTex(base, true), specular: new THREE.Color(0x335577), shininess: 28 })); scene.add(earth);
+  clouds = new THREE.Mesh(new THREE.SphereGeometry(1.012, 96, 72), new THREE.MeshLambertMaterial({ map: mkTex(noiseClouds(), true), transparent: true, opacity: .55, depthWrite: false })); scene.add(clouds);
+  try { buildFlight(); } catch (e) { console.error(e); route = null; }
+}
+function mkTex(cv, srgb) { const t = new THREE.CanvasTexture(cv); if (srgb) t.encoding = THREE.sRGBEncoding; t.anisotropy = Math.min(8, (renderer.capabilities.getMaxAnisotropy && renderer.capabilities.getMaxAnisotropy()) || 1); t.needsUpdate = true; return t; }
+function noiseClouds() { const n = noise(1024, 512, 7, 5), g = n.getContext('2d'), im = g.getImageData(0, 0, 1024, 512), d = im.data; for (let i = 0; i < d.length; i += 4) { const v = d[i + 3] / 255, a = sm(.52, .78, v); d[i + 3] = Math.round(255 * a); } g.putImageData(im, 0, 0); return n; }
+function ocean(g, w, h) {
+  const og = g.createLinearGradient(0, 0, 0, h); og.addColorStop(0, '#0a2f57'); og.addColorStop(.5, '#0d4a80'); og.addColorStop(1, '#0a2f57'); g.fillStyle = og; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(255,255,255,.07)'; g.lineWidth = Math.max(1, w / 2800); g.beginPath(); for (let lo = -180; lo <= 180; lo += 30) { const x = (lo + 180) / 360 * w; g.moveTo(x, 0); g.lineTo(x, h); } for (let la = -60; la <= 60; la += 30) { const y = (90 - la) / 180 * h; g.moveTo(0, y); g.lineTo(w, y); } g.stroke();
+}
+
+// ---------- بناء قوام الأرض من TopoJSON: تعبئة الدول والحدود والسواحل ----------
+function buildEarth(topo) {
+  const sc = topo.transform ? topo.transform.scale : [1, 1], tr = topo.transform ? topo.transform.translate : [0, 0];
+  const arcs = topo.arcs.map(a => { let x = 0, y = 0; return a.map(p => { x += p[0]; y += p[1]; return [x * sc[0] + tr[0], y * sc[1] + tr[1]]; }); });
+  const geoms = topo.objects.countries.geometries, polysOf = g => g.type === 'Polygon' ? [g.arcs] : g.type === 'MultiPolygon' ? g.arcs : [];
+  const ring = r => { const out = []; r.forEach(i => { const a = i < 0 ? arcs[~i].slice().reverse() : arcs[i]; a.forEach((p, k) => { if (out.length && k === 0) return; out.push(p); }); }); return out; };
+  const unwrap = pts => { let prev = pts[0][0], off = 0; return pts.map(p => { let lon = p[0] + off; const d = lon - prev; if (d > 180) { off -= 360; lon -= 360; } else if (d < -180) { off += 360; lon += 360; } prev = lon; return [lon, p[1]]; }); };
+  const draw = (g, pts, X, Y, close) => { if (pts.length < 2) return; const u = unwrap(pts); let mn = 1e9, mx = -1e9; u.forEach(p => { mn = Math.min(mn, p[0]); mx = Math.max(mx, p[0]); });
+    (mn < -180 || mx > 180 ? [-360, 0, 360] : [0]).forEach(s => { u.forEach((p, i) => i ? g.lineTo(X(p[0] + s), Y(p[1])) : g.moveTo(X(p[0] + s), Y(p[1]))); if (close) g.closePath(); }); };
+  const XY = (w, h) => [lon => (lon + 180) / 360 * w, lat => (90 - lat) / 180 * h];
+  const fillAll = (g, w, h, colFn) => { const [X, Y] = XY(w, h); geoms.forEach((ge, i) => { g.beginPath(); polysOf(ge).forEach(poly => poly.forEach(r => draw(g, ring(r), X, Y, true))); g.fillStyle = colFn(ge, i); g.fill('evenodd'); }); };
+  const cnt = new Array(arcs.length).fill(0); geoms.forEach(ge => polysOf(ge).forEach(poly => poly.forEach(r => r.forEach(i => { cnt[i < 0 ? ~i : i]++; }))));
+  const strokeArcs = (g, w, h, test) => { const [X, Y] = XY(w, h); g.beginPath(); arcs.forEach((a, i) => { if (test(cnt[i])) draw(g, a, X, Y, false); }); g.stroke(); };
+  const cv = document.createElement('canvas'); cv.width = TW; cv.height = TH; const g = cv.getContext('2d'); ocean(g, TW, TH); g.lineJoin = 'round'; g.lineCap = 'round';
+  g.save(); g.shadowColor = 'rgba(80,190,240,.9)'; g.shadowBlur = TW / 300; g.strokeStyle = 'rgba(110,200,245,.55)'; g.lineWidth = TW / 700; strokeArcs(g, TW, TH, n => n === 1); g.restore();   // وهج الساحل في المياه الضحلة
+  fillAll(g, TW, TH, (ge, i) => { const nm = ge.properties && ge.properties.name; return (nm === 'Antarctica' || nm === 'Greenland') ? '#e3ecf2' : PAL[(Math.abs(parseInt(ge.id, 10) || i) * 7) % PAL.length]; });
+  g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = .35; g.drawImage(noise(1024, 512, 3, 4), 0, 0, TW, TH); g.restore();   // تبقيع طبيعي للألوان
+  g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = TW / 2600; strokeArcs(g, TW, TH, n => n >= 2);
+  g.strokeStyle = 'rgba(234,247,255,.9)'; g.lineWidth = TW / 2200; strokeArcs(g, TW, TH, n => n === 1);
+  const sv = document.createElement('canvas'); sv.width = 2048; sv.height = 1024; const sg = sv.getContext('2d'); sg.fillStyle = '#9fb7c9'; sg.fillRect(0, 0, 2048, 1024); fillAll(sg, 2048, 1024, () => '#000');   // خريطة لمعان: المحيط يلمع واليابسة لا
+  LAB.length = 0; Object.keys(AR).forEach(nm => { const ge = geoms.find(x => x.properties && x.properties.name === nm); if (!ge) return; let best = null; polysOf(ge).forEach(poly => { const r = ring(poly[0]); if (!best || r.length > best.length) best = r; }); if (!best) return;
+    let la = 0, lo = 0; best.forEach(p => { lo += p[0]; la += p[1]; }); const ov = OV[nm]; LAB.push({ ar: AR[nm], lat: ov ? ov[0] : la / best.length, lon: ov ? ov[1] : lo / best.length }); });
+  earth.material.map = mkTex(cv, true); earth.material.specularMap = mkTex(sv, false); earth.material.needsUpdate = true;
+}
+
+// ---------- الطائرة: طائرة ركاب عريضة البدن بمقاييس حقيقية تقريباً (الطول = 1 قبل التحجيم) ----------
+const NAVY = 0x14213d, ACC = 0xff8c1a;
+function buildPlane() {
+  const g = new THREE.Group(), lights = [], ph = (c, sh = 70, sp = 0x555555) => new THREE.MeshPhongMaterial({ color: c, shininess: sh, specular: sp, side: THREE.DoubleSide });
+  const mWhite = ph(0xf3f5f7, 90, 0x777777), mGray = ph(0xd9dee4, 60), mNavy = ph(NAVY, 60, 0x333333), mDark = ph(0x151b24, 100, 0x888888), mAcc = ph(ACC, 40), mMetal = ph(0x9aa3ad, 80);
+  const V2 = (a, b) => new THREE.Vector2(a, b);
+  const fp = [[.004, -.5], [.012, -.48], [.03, -.43], [.046, -.36], [.05, -.3], [.05, .22], [.049, .28], [.044, .35], [.034, .42], [.02, .47], [.007, .495], [0, .5]].map(p => V2(p[0], p[1]));
+  const fus = new THREE.LatheGeometry(fp, 48); fus.rotateX(Math.PI / 2); g.add(new THREE.Mesh(fus, mWhite));                       // جسم الطائرة
+  [1.33, -1.33].forEach(c => { const st = new THREE.LatheGeometry([V2(.0506, -.3), V2(.0506, .24)], 2, c - .07, .14); st.rotateX(Math.PI / 2); g.add(new THREE.Mesh(st, mAcc)); });   // خط الطلاء الجانبي
+  const wm = new THREE.InstancedMesh(new THREE.BoxGeometry(.003, .0075, .0065), mDark, 76), M = new THREE.Matrix4(); let n = 0;
+  for (let i = 0; i < 38; i++) [1, -1].forEach(sd => { M.makeTranslation(sd * .0487, .012, -.25 + i * .0125); wm.setMatrixAt(n++, M); }); g.add(wm);   // صف النوافذ
+  const ws = new THREE.Mesh(new THREE.BoxGeometry(.05, .012, .02), mDark); ws.position.set(0, .022, .425); ws.rotation.x = -.5; g.add(ws);   // زجاج قمرة القيادة
+  const bf = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), mWhite); bf.scale.set(.058, .04, .17); bf.position.set(0, -.04, -.02); g.add(bf);   // غلاف التقاء الجناح بالبدن
+  const wing = (pts, th, mat, mir) => { const sh = new THREE.Shape(); pts.forEach(([x, y], i) => { const X = mir ? -x : x; i ? sh.lineTo(X, y) : sh.moveTo(X, y); }); const geo = new THREE.ExtrudeGeometry(sh, { depth: th, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); return new THREE.Mesh(geo, mat); };
+  [false, true].forEach(m => {
+    const sd = m ? -1 : 1, w = wing([[.04, -.06], [.5, .12], [.5, .18], [.04, .14]], .012, mGray, m); w.position.y = -.035; w.rotation.z = sd * .06; g.add(w);   // جناح مائل للخلف مع زاوية ميل للأعلى
+    const wl = new THREE.Mesh(new THREE.BoxGeometry(.004, .07, .05), mNavy); wl.position.set(sd * .503, .025, -.155); wl.rotation.z = -sd * .18; g.add(wl);       // جناحية (Winglet)
+    const h = wing([[.02, .36], [.17, .45], [.17, .5], [.02, .46]], .006, mGray, m); h.position.y = .004; h.rotation.z = sd * .03; g.add(h);                    // الذيل الأفقي
+    const lm = new THREE.Mesh(new THREE.SphereGeometry(.006, 10, 8), new THREE.MeshBasicMaterial({ color: m ? 0xff2d2d : 0x2dff6b })); lm.position.set(sd * .5, -.005, -.15); g.add(lm);   // أضواء الملاحة
+  });
+  const eng = sd => {   // محرك توربيني: غلاف + مروحة + مخروط أمامي + حامل
+    const ge = new THREE.Group(), prof = [[.021, .075], [.027, .066], [.029, .03], [.027, -.035], [.02, -.07], [.012, -.088]].map(p => V2(p[0], p[1])), cow = new THREE.LatheGeometry(prof, 32); cow.rotateX(Math.PI / 2); ge.add(new THREE.Mesh(cow, mGray));
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(.0185, 24), mDark); fan.position.z = .0655; ge.add(fan);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(.0065, .022, 16), mMetal); cone.rotation.x = Math.PI / 2; cone.position.z = .074; ge.add(cone);
+    ge.position.set(sd * .17, -.07, .055); g.add(ge); const py = new THREE.Mesh(new THREE.BoxGeometry(.009, .03, .085), mGray); py.position.set(sd * .17, -.04, .045); g.add(py);
+  }; eng(1); eng(-1);
+  const fs = new THREE.Shape(); [[.27, .03], [.4, .21], [.47, .21], [.43, .01]].forEach(([u, v], i) => i ? fs.lineTo(u, v) : fs.moveTo(u, v));
+  const fg = new THREE.ExtrudeGeometry(fs, { depth: .008, bevelEnabled: false }); fg.rotateY(Math.PI / 2); fg.translate(-.004, 0, 0); g.add(new THREE.Mesh(fg, mNavy));   // الذيل الرأسي
+  const tl = new THREE.Mesh(new THREE.SphereGeometry(.005, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); tl.position.set(0, .215, -.47); g.add(tl); lights.push(tl);
+  return { g, lights };
+}
+
+// ---------- مسار الرحلة: القاهرة ← نيويورك على دائرة عظمى مع ارتفاع قوسي ----------
+const CAI = [30.04, 31.24], NYC = [40.64, -73.78];
+let route = null;
+function buildFlight() {
+  const A = ll2v(CAI[0], CAI[1]), B = ll2v(NYC[0], NYC[1]), om = Math.acos(A.dot(B)), N = 240, alt = p => .03 + .05 * Math.pow(Math.sin(Math.PI * p), .7);
+  const pos = p => { const sn = Math.sin(om), a = Math.sin((1 - p) * om) / sn, b = Math.sin(p * om) / sn; return A.clone().multiplyScalar(a).add(B.clone().multiplyScalar(b)).normalize().multiplyScalar(1 + alt(p)); };
+  const pts = []; for (let i = 0; i <= N; i++) pts.push(pos(i / N));
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), N, .0042, 6, false), new THREE.MeshBasicMaterial({ color: 0xff6d00 })); scene.add(tube);      // الأثر المقطوع
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: .02, gapSize: .016, transparent: true, opacity: .75 })); line.computeLineDistances(); scene.add(line);   // المسار القادم
+  const pl = buildPlane(); pl.g.scale.setScalar(.16); scene.add(pl.g);
+  [A, B].forEach(v => { const m = new THREE.Mesh(new THREE.SphereGeometry(.012, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff6d00 })); m.position.copy(v.clone().multiplyScalar(1.004)); scene.add(m); });
+  route = { A, B, om, N, pos, tube, plane: pl };
+}
+
+// ---------- الكاميرا والنصوص ----------
+function lab(x, y, txt, size, al, dot, col = '#0b1a2e') {
+  if (al <= .01 || x < 60 || x > W - 60 || y < 60 || y > H - 60) return; ctx.save(); ctx.globalAlpha = al; ctx.font = `700 ${size}px ${FB}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.direction = 'rtl'; ctx.lineJoin = 'round';
+  if (dot) { ctx.fillStyle = '#ff6d00'; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); y -= size * .85; } ctx.strokeStyle = 'rgba(245,245,245,.92)'; ctx.lineWidth = 8; ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.restore();
+}
+function proj(lat, lon) { const p = ll2v(lat, lon, 1), v = camera.position.clone().sub(p).normalize(), vis = p.clone().normalize().dot(v), s = p.clone().project(camera); return { x: (s.x * .5 + .5) * W, y: (-s.y * .5 + .5) * H, vis }; }
+function frameAt(t) {
+  if (!route) { camera.position.set(1.2, .8, 2.6); camera.lookAt(0, 0, 0); sun.position.set(3, 4, 5); ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H); renderer.render(scene, camera); ctx.drawImage(renderer.domElement, 0, 0, W, H); return; }
+  const p = ee(C((t - 2) / 15)), k = C(t / DUR), w = sm(1.5, 5, t) * (1 - sm(16.5, 19.5, t));   // p: تقدّم الطائرة، w: 0 لقطة واسعة للأرض ← 1 كاميرا مطاردة قريبة
+  const P = route.pos(p), P2 = route.pos(Math.min(1, p + .004)), P0 = route.pos(Math.max(0, p - .004)), up = P.clone().normalize(), fw = P2.clone().sub(P0).normalize();
+  fw.sub(up.clone().multiplyScalar(fw.dot(up))).normalize(); const rt = new THREE.Vector3().crossVectors(up, fw).normalize();
+  const pg = route.plane.g; pg.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(rt, up, fw)); pg.position.copy(P); pg.rotateZ(.1 * Math.sin(6 * Math.PI * p));   // اتجاه الطائرة على المسار مع ميل جانبي خفيف
+  route.plane.lights[0].visible = (t * 1.2) % 1 < .18; route.tube.geometry.setDrawRange(0, Math.floor(p * route.N) * 36);
+  const phi = -.9 + 2.2 * ee(k), ro = 1.2 - .5 * w, hh = 2.0 - 1.66 * w;   // الكاميرا تدور حول الطائرة وتقترب منها
+  const off = fw.clone().multiplyScalar(-Math.cos(phi) * ro).add(rt.clone().multiplyScalar(Math.sin(phi) * ro)).add(up.clone().multiplyScalar(hh));
+  camera.position.copy(P).add(off); camera.up.set(0, 1, 0).lerp(up, w).normalize(); camera.lookAt(P.clone().multiplyScalar(.45 + .55 * w));
+  sun.position.copy(camera.position).add(new THREE.Vector3(-3, 4, 2)).multiplyScalar(2); clouds.rotation.y = t * .02;
+  ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H); renderer.render(scene, camera); ctx.drawImage(renderer.domElement, 0, 0, W, H);
+  const aC = C(1 - 2.4 * w), aK = C((w - .15) / .5), vf = v => C((v - .15) / .3);
+  if (aC > 0) { CONT.forEach(([n, la, lo]) => { const q = proj(la, lo); lab(q.x, q.y, n, 54, aC * vf(q.vis), false); }); OCE.forEach(([n, la, lo]) => { const q = proj(la, lo); lab(q.x, q.y, n, 38, aC * vf(q.vis) * .75, false); }); }
+  if (aK > 0) { const size = 30, placed = []; LAB.forEach(l => { const q = proj(l.lat, l.lon), a = aK * vf(q.vis); if (a <= .02 || placed.some(o => Math.abs(o.x - q.x) < size * 3.4 && Math.abs(o.y - q.y) < size * 1.6)) return; placed.push(q); lab(q.x, q.y, l.ar, size, a, true); }); }
+  [['القاهرة', CAI], ['نيويورك', NYC]].forEach(([n, c]) => { const q = proj(c[0], c[1]); lab(q.x, q.y, n, 46, vf(q.vis), true, '#b34700'); });
+  T('القاهرة ← نيويورك', 960, 1000, 54, '700', '#000', C(t / 1.2));
+  T(Math.round(p * route.om * 6371).toLocaleString('en-US') + ' كم', 120, 1000, 44, '600', '#555', C(t / 1.2), 'left');
+  T(TITLE, 1824, 96, 36, '600', '#000', 1, 'right');
+}
+
+// ---------- المعاينة ----------
+let raf = 0;
+function runPreview() {
+  cancelAnimationFrame(raf); setStatus('معاينة مباشرة'); const t0 = performance.now();
+  const loop = () => { const t = (performance.now() - t0) / 1000; if (t >= DUR) { frameAt(DUR - .001); setStatus('انتهت المعاينة'); return; } frameAt(t); raf = requestAnimationFrame(loop); };
+  loop();
+}
+function msg(s) { ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H); T(s, 960, 540, 54, '700', '#000'); }
+async function loadTopo() { for (const u of SRC) { try { const r = await fetch(u); if (r.ok) return await r.json(); } catch (e) { console.warn('fetch failed', u, e); } } return null; }
+btnReplay.onclick = () => { if (ready) runPreview(); };
+(async function init() {
+  if (typeof THREE === 'undefined') { msg('تعذّر تحميل three.js — تأكد من الاتصال بالإنترنت'); setStatus('خطأ'); return; }
+  try { await Promise.all(['600 40px "Readex Pro"', '700 40px "Readex Pro"'].map(f => document.fonts.load(f, 'ابج'))); } catch (e) {}
+  msg('جاري تحميل خريطة الدول…'); initGL();
+  const topo = await loadTopo();
+  if (topo) { try { buildEarth(topo); } catch (e) { console.error(e); setStatus('تعذّر بناء الخريطة'); } } else setStatus('تعذّر تحميل بيانات الدول — تعمل المعاينة بدونها');
+  ready = true; runPreview();
+})();
+</script>
+</body>
+</html>
