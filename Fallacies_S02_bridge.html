@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fallacies S02 — الجسر المشروخ</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        /* إطار المعاينة المتجاوب بالكامل مع كافة الشاشات بالـ vh و vw */
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f5;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // ============ IDENTITY LAYER (CUSTOM MOTION ENGINE) ============
+        /* PROJECT_META
+        project:       المغالطات المنطقية — الجسر واللوح المشروخ
+        part:          S02 (الجسر المشروخ)
+        duration_s:    33.5
+        rhythm:        سريع غير خطي: بطيء عند الجسر والشرح وسريع عند التعداد والقطع
+        script_from:   الحُجَّةُ الجَيِّدَةُ جِسرٌ
+        script_to:     ثُمَّ الرَّدُّ الذَّكِيّ
+        scenes:        9
+        canvas:        1920x1080 @30fps
+        title_tag:     #المغالطات_المنطقية
+        audio:         none
+        library_added: wt GC cam xf sp focus camMix fq bx crack woodDeco plankBox pxn planksDraw railsDraw baseDraw cubesDraw flagDraw tick walker
+        recurring:     جسر Pseudo-3D من 12 لوحاً (الأيمن = الأدلة، الأيسر = النتيجة)، اللوح المشروخ رقم 7 من اليمين، ألواح WOOD، ضفتان حجر وعشب وماء، شخص برداء رمادي داكن، الرد الذكي لقطة داكنة
+        */
+
+        // ---------- العقد: الأسماء التي تستدعيها الطبقة الثابتة بالاسم ----------
+        const CONFIG = { fps: 30, width: 1920, height: 1080, duration: 33.5 };
+        const OUTPUT_FILENAME = 'fallacies_s02_bridge';
+        let audioBuffer = null;
+
+        // ---------- إعدادات هذا الفيديو ----------
+        const AUDIO_URLS = [];
+        const TITLE = '#المغالطات_المنطقية';
+        const BASE = 33.5;
+        const W = CONFIG.width, H = CONFIG.height;
+
+        // ---------- أدوات أساسية ----------
+        const C = clamp01;
+        const E = v => 1 - Math.pow(1 - C(v), 3);
+        const EI = v => { v = C(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };
+        const ER = v => { v = C(v); return v >= 1 ? 1 : 1 - Math.pow(2, -10 * v); };
+        const win = (t, a, b, f = .22) => C((t - a) / f) * C((b - t) / f);
+        const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+        const INK = '#1c1917';
+        const FB = "'Readex Pro', sans-serif", FD = "'Lalezar', 'Readex Pro', sans-serif", FQ = "'Amiri', serif", FL = "'Space Grotesk', sans-serif";
+
+        async function loadFonts() {
+            const l = document.createElement('link'); l.rel = 'stylesheet';
+            l.href = 'https://fonts.googleapis.com/css2?family=Lalezar&family=Readex+Pro:wght@400;500;600;700&family=Amiri:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap';
+            document.head.appendChild(l);
+            await Promise.all(['400 40px Lalezar', '600 40px "Readex Pro"', '700 40px "Readex Pro"', '700 40px Amiri', '700 40px "Space Grotesk"'].map(f => document.fonts.load(f, 'ابج 123 Abc')));
+        }
+
+        function T(s, x, y, size, w = '600', col = '#000', al = 1, align = 'center', dir = 'rtl', fam = FB) {
+            const k = Math.min(1, al); if (k <= 0.01) return;
+            ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * .85, W, size * 1.7); ctx.clip();
+            ctx.globalAlpha = k; ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = dir;
+            ctx.fillText(s, x, y + (1 - k) * size * .9); ctx.restore();
+        }
+        const N = (s, x, y, size, w = '700', col = '#000', al = 1) => T(s, x, y, size, w, col, al, 'center', 'ltr', FL);
+        const gr = (x0, y0, x1, y1, c) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, c[0]); g.addColorStop(1, c[1]); return g; };
+        function rect(x, y, w, h, col, al = 1, r = 0) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); ctx.restore(); }
+        function circ(x, y, r, col, al = 1) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+        function ln(x1, y1, x2, y2, st, w, al) { ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = st; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); }
+        const IR = (cx, cy, R, p, fn) => { if (p <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R * p, 0, 7); ctx.clip(); fn(); ctx.restore(); };
+
+        // ---------- Pseudo-3D (2.5D) على ctx ----------
+        const CAM = { f: 900, cx: W / 2, cy: H / 2 };
+        const rotX3 = (p, a) => ({ x: p.x, y: p.y * Math.cos(a) - p.z * Math.sin(a), z: p.y * Math.sin(a) + p.z * Math.cos(a) });
+        const rotY3 = (p, a) => ({ x: p.x * Math.cos(a) + p.z * Math.sin(a), y: p.y, z: -p.x * Math.sin(a) + p.z * Math.cos(a) });
+        const proj = p => { const k = CAM.f / (CAM.f + p.z); return { x: CAM.cx + p.x * k, y: CAM.cy + p.y * k, k }; };
+        function shade(hexc, f) { const c = [1, 3, 5].map(i => parseInt(hexc.substr(i, 2), 16)), t = f < 0 ? 0 : 255, p = Math.abs(f); return `rgb(${c.map(v => Math.round(v + (t - v) * p)).join(',')})`; }
+        function poly(pts, fill, al = 1, stroke = null, lw = 3) { ctx.save(); ctx.globalAlpha = al; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke(); } ctx.restore(); }
+        function box3(cx, cy, cz, w, h, d, ry, rx, col, al = 1) {
+            const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(([x, y, z]) => { const p = rotX3(rotY3({ x: x * w / 2, y: y * h / 2, z: z * d / 2 }, ry), rx); return { x: p.x + cx, y: p.y + cy, z: p.z + cz }; });
+            const F = [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [4, 5, 1, 0], [3, 2, 6, 7]], L = { x: -.45, y: -.7, z: -.55 }, ll = Math.hypot(L.x, L.y, L.z);
+            F.map(f => { const p = f.map(i => V[i]), c = { x: (p[0].x + p[2].x) / 2, y: (p[0].y + p[2].y) / 2, z: (p[0].z + p[2].z) / 2 };
+                const a = { x: p[1].x - p[0].x, y: p[1].y - p[0].y, z: p[1].z - p[0].z }, b = { x: p[3].x - p[0].x, y: p[3].y - p[0].y, z: p[3].z - p[0].z };
+                let n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; const nl = Math.hypot(n.x, n.y, n.z) || 1; n = { x: n.x / nl, y: n.y / nl, z: n.z / nl };
+                if (n.x * (c.x - cx) + n.y * (c.y - cy) + n.z * (c.z - cz) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+                return { p, n, c }; })
+                .filter(o => o.n.x * o.c.x + o.n.y * o.c.y + o.n.z * (o.c.z + CAM.f) < 0)
+                .sort((a, b) => b.c.z - a.c.z)
+                .forEach(o => poly(o.p.map(proj), shade(col, Math.max(0, (o.n.x * L.x + o.n.y * L.y + o.n.z * L.z) / ll) * .65 - .3), al, shade(col, -.45), 3));
+        }
+        function sphere3(cx, cy, cz, r, col, al = 1) { const q = proj({ x: cx, y: cy, z: cz }), rr = r * q.k; ctx.save(); ctx.globalAlpha = al; const g = ctx.createRadialGradient(q.x - rr * .35, q.y - rr * .38, rr * .1, q.x, q.y, rr); g.addColorStop(0, shade(col, .55)); g.addColorStop(.6, col); g.addColorStop(1, shade(col, -.5)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, rr, 0, 7); ctx.fill(); ctx.restore(); return q; }
+        function shadow3(x, y, z, rx, al = .2) { const q = proj({ x, y, z }); ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(q.x, q.y, rx * q.k, rx * q.k * .28, 0, 0, 7); ctx.fill(); ctx.restore(); }
+
+        // ===== LIBRARY: BEGIN =====
+        const WOOD = '#b07a3f', WOOD_D = '#8b5a2b', STONE = '#9aa0a6', GRASS = '#6fbf4a', GRASS_D = '#4f9a34', WATER = '#4aa3df', WATER_D = '#3a8cc4', DARK = '#141210', SK = '#f2c9a0';
+        const wt = k => k / 2.3;                       // بداية الكلمة رقم k (عدّاً تراكمياً من أول المقطع) بالثواني
+        let MT = 0;                                    // زمن الحركة المتباطئ للإطار الحالي (يُضبط أول كل إطار)
+
+        // كاميرا عالمية لنظام Pseudo-3D: تحويل ثابت (تدوير + تكبير + إزاحة) فوق rotX3/rotY3/proj
+        const GC = { s: 1.15, ry: .3, rx: .3, tx: 0, ty: 0, tz: 0 };
+        function cam(o) { Object.assign(GC, { s: 1.15, ry: .3, rx: .3, tx: 0, ty: 0, tz: 0 }, o); CAM.f = 2200; CAM.cx = W / 2; CAM.cy = H / 2; }
+        const xf = (x, y, z) => { const p = rotX3(rotY3({ x, y, z }, GC.ry), GC.rx); return { x: p.x * GC.s + GC.tx, y: p.y * GC.s + GC.ty, z: p.z * GC.s + GC.tz }; };
+        const sp = (x, y, z) => proj(xf(x, y, z));
+        function focus(fx, fy, fz, o, dx = 0, dy = 0) { cam(o); const q = xf(fx, fy, fz); GC.tx = dx - q.x; GC.ty = dy - q.y; GC.tz = -q.z; }   // النقطة (fx,fy,fz) تقع عند (dx,dy) من مركز الشاشة
+        function camMix(A, B, t) { const m = k => A[k] + (B[k] - A[k]) * t; focus(m('fx'), m('fy'), m('fz'), { s: m('s'), ry: m('ry'), rx: m('rx') }, m('dx'), m('dy')); }
+        const lerp2 = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        const fq = (p, s, t) => lerp2(lerp2(p[3], p[0], t), lerp2(p[2], p[1], t), s);   // نقطة على الوجه العلوي: s على امتداد x، t على امتداد z
+
+        // صندوق بتدوير موضعي حول المحور x (tl) ثم الكاميرا العالمية. col لون واحد أو 6 ألوان [قريب،بعيد،يسار،يمين،علوي،سفلي]. deco(faceIdx, pts) لتفاصيل فوق الوجه
+        function bx(cx, cy, cz, w, h, d, tl, col, al = 1, deco = null) {
+            if (al <= .01) return;
+            const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(([a, b, c]) => { const l = rotX3({ x: a * w / 2, y: b * h / 2, z: c * d / 2 }, tl); return xf(cx + l.x, cy + l.y, cz + l.z); });
+            const o = xf(cx, cy, cz), L = { x: -.45, y: -.7, z: -.55 }, ll = Math.hypot(L.x, L.y, L.z);
+            [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [4, 5, 1, 0], [3, 2, 6, 7]].map((f, fi) => {
+                const p = f.map(i => V[i]), c = { x: (p[0].x + p[2].x) / 2, y: (p[0].y + p[2].y) / 2, z: (p[0].z + p[2].z) / 2 };
+                const a = { x: p[1].x - p[0].x, y: p[1].y - p[0].y, z: p[1].z - p[0].z }, b = { x: p[3].x - p[0].x, y: p[3].y - p[0].y, z: p[3].z - p[0].z };
+                let n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; const nl = Math.hypot(n.x, n.y, n.z) || 1; n = { x: n.x / nl, y: n.y / nl, z: n.z / nl };
+                if (n.x * (c.x - o.x) + n.y * (c.y - o.y) + n.z * (c.z - o.z) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+                return { p, n, c, fi };
+            }).filter(q => q.n.x * q.c.x + q.n.y * q.c.y + q.n.z * (q.c.z + CAM.f) < 0)
+                .sort((a, b) => b.c.z - a.c.z)
+                .forEach(q => { const fc = Array.isArray(col) ? col[q.fi] : col, pp = q.p.map(proj); poly(pp, shade(fc, Math.max(0, (q.n.x * L.x + q.n.y * L.y + q.n.z * L.z) / ll) * .65 - .3), al, shade(fc, -.45), 2.5); if (deco) deco(q.fi, pp, al); });
+        }
+
+        // الشق: خط متعرّج على الوجه العلوي للوح، pr تقدّم الرسم 0..1
+        function crack(pp, pr, al) {
+            if (pr <= 0 || al <= 0) return;
+            const Z = [[0, .5], [.16, .42], [.3, .58], [.45, .4], [.6, .6], [.76, .43], [.9, .56], [1, .5]], P = Z.map(([s, t]) => fq(pp, s, t)), m = (Z.length - 1) * C(pr), n = Math.floor(m);
+            ctx.save(); ctx.globalAlpha = al; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            [['#f6e2bd', 2, 3], ['#24130a', 5, 0]].forEach(([c, w, o]) => {
+                ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y + o);
+                for (let i = 1; i <= n; i++) ctx.lineTo(P[i].x, P[i].y + o);
+                if (n < Z.length - 1) { const a = P[n], b = P[n + 1], f = m - n; ctx.lineTo(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f + o); }
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+        // عروق الخشب والمسامير فوق اللوح (ax: العروق على امتداد x بدل z)
+        function woodDeco(col, cr, ax) {
+            return (fi, pp, al) => {
+                if (fi !== 4) return;
+                [.22, .5, .78].forEach((v, j) => { const a = ax ? fq(pp, .04, v) : fq(pp, v, .05), b = ax ? fq(pp, .96, v + (j - 1) * .04) : fq(pp, v + (j - 1) * .04, .95); ln(a.x, a.y, b.x, b.y, shade(col, -.35), 2, .4 * al); });
+                (ax ? [.06, .94] : [.1, .9]).forEach(v => { const q = ax ? fq(pp, v, .5) : fq(pp, .5, v); circ(q.x, q.y, 3.4, '#3b2412', .7 * al); });
+                if (cr && cr.p > 0) crack(pp, cr.p, cr.a * al);
+            };
+        }
+        const PD = 150, PT = 22, KC = 7;
+        const pxn = (i, n = 12, p = 62) => (n - 1) / 2 * p - i * p;       // مركز اللوح i (0 = الأيمن) على المحور x
+        function plankBox(x, y, z, w, d, tl, a, o = {}) { const t = o.top || WOOD, sd = o.side || WOOD_D; bx(x, y, z, w, PT, d, tl, [sd, sd, sd, sd, t, sd], a, woodDeco(t, o.cr, o.ax)); }
+        // يرسم ألواح الجسر مرتّبة بالعمق. st(i) → { a, dy, tl, cr:{p,a}, brk } حيث brk = ثواني منذ الكسر (<0 = سليم)
+        function planksDraw(st, n, pitch) {
+            const L = [];
+            for (let i = 0; i < n; i++) { const s = st(i); if (s.a > .01) L.push({ s, x: pxn(i, n, pitch), z: xf(pxn(i, n, pitch), 0, 0).z }); }
+            L.sort((a, b) => b.z - a.z).forEach(({ s, x }) => {
+                const y = PT / 2 + (s.dy || 0), w = pitch - 8;
+                if (s.brk >= 0) {
+                    const t = s.brk, th = Math.min(1.1, 1.9 * t);
+                    plankBox(x, y + 520 * t * t, PD / 4 + 4, w, PD / 2 - 2, th, s.a);        // النصف البعيد
+                    plankBox(x, y + 330 * t * t, -PD / 4 - 4, w, PD / 2 - 2, -th, s.a);       // النصف القريب
+                } else plankBox(x, y, 0, w, PD, s.tl || 0, s.a, { cr: s.cr });
+            });
+        }
+        // الحبل والأعمدة: far = الجانب البعيد، وإلا القريب
+        function railsDraw(far, n, pitch, a) {
+            if (a < .01) return;
+            const z = (far ? 1 : -1) * (PD / 2 - 9), I = []; for (let i = 0; i < n; i += 3) I.push(i); if (I[I.length - 1] !== n - 1) I.push(n - 1);
+            I.forEach(i => bx(pxn(i, n, pitch), -46, z, 12, 92, 12, 0, WOOD_D, a));
+            ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#5b3a1a'; ctx.lineWidth = 5 * GC.s; ctx.lineCap = 'round'; ctx.beginPath();
+            I.forEach((i, j) => { const t = sp(pxn(i, n, pitch), -92, z); if (!j) { ctx.moveTo(t.x, t.y); return; } const m = sp((pxn(I[j - 1], n, pitch) + pxn(i, n, pitch)) / 2, -68, z); ctx.quadraticCurveTo(m.x, m.y, t.x, t.y); });
+            ctx.stroke(); ctx.restore();
+        }
+        // ظل أرضي + كتلة الماء + الضفتان (حجر وعشب)
+        function baseDraw(a) {
+            const q = sp(0, 160, 0);
+            ctx.save(); ctx.globalAlpha = a * .12; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(q.x, q.y + 10, 600 * q.k * GC.s, 150 * q.k * GC.s, 0, 0, 7); ctx.fill(); ctx.restore();
+            bx(0, 115, 0, 744, 90, 320, 0, [WATER_D, WATER_D, WATER_D, WATER_D, WATER, WATER_D], a, (fi, pp) => {
+                if (fi !== 4) return;
+                poly([fq(pp, 0, .266), fq(pp, 1, .266), fq(pp, 1, .734), fq(pp, 0, .734)], '#0b3c5d', a * .2);   // ظل الجسر على الماء
+                for (let j = 0; j < 9; j++) { const s = (rnd(j) + MT * .04 * (1 + rnd(j + 7))) % 1, t = .12 + rnd(j + 30) * .76, p = fq(pp, s, t), q2 = fq(pp, Math.min(1, s + .08), t); ln(p.x, p.y, q2.x, q2.y, '#ffffff', 3, a * .45); }
+            });
+            [-1, 1].forEach(sd => { bx(sd * 482, 91, 0, 220, 130, 320, 0, STONE, a); bx(sd * 482, 13, 0, 220, 26, 320, 0, [GRASS_D, GRASS_D, GRASS_D, GRASS_D, GRASS, GRASS_D], a); });
+        }
+        // مكعبات الأدلة على الضفة اليمنى (ps = تقدّم ظهور كل مكعب)
+        function cubesDraw(ps, a) { [[470, -35, 56], [470, -35, -56], [470, -105, 0]].forEach(([x, y, z], i) => { const p = ps[i]; if (p > .01) bx(x, y - (1 - p) * 140, z, 70, 70, 70, 0, '#dfe3e8', a * p); }); }
+        // علم النتيجة على الضفة اليسرى (r = ارتفاع العلم 0..1)
+        function flagDraw(a, r) {
+            if (r <= .01) return;
+            const X = -470, fy = -160 + (1 - r) * 120, L = [], B = [];
+            bx(X, -85, 0, 10, 170, 10, 0, '#4b5057', a);
+            for (let k = 0; k < 7; k++) { const x = X - 8 - k * 19, y = fy + Math.sin(MT * 5 + k * .9) * 5 * k / 7; L.push(sp(x, y, 0)); B.push(sp(x, y + 62, 0)); }
+            poly(L.concat(B.reverse()), '#1c1917', a * C(r * 3));
+        }
+        function tick(x, y, s, pr, col, al, lw = 12) {
+            if (pr <= 0) return;
+            const A = [x - .5 * s, y + .05 * s], B = [x - .12 * s, y + .42 * s], D = [x + .55 * s, y - .42 * s], p1 = C(pr / .4);
+            ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(A[0] + (B[0] - A[0]) * p1, A[1] + (B[1] - A[1]) * p1);
+            if (pr > .4) { const p2 = C((pr - .4) / .6); ctx.lineTo(B[0] + (D[0] - B[0]) * p2, B[1] + (D[1] - B[1]) * p2); }
+            ctx.stroke(); ctx.restore();
+        }
+        // شخص بمنظور جانبي واقف على اللوح عند (x, y, z) عالمياً. o: face (-1 يساراً)، still، lean، mag، up (ذراعان للأعلى)، sweat (ثواني)، sc
+        function walker(x, z, ph, a, o = {}) {
+            const q = sp(x, o.y || 0, z), k = q.k * GC.s * (o.sc || 1) * .86, sw = o.still ? 0 : Math.sin(ph) * 34, lf = o.still ? 0 : 14;
+            ctx.save(); ctx.translate(q.x, q.y); ctx.scale(k * (o.face || -1), k); ctx.globalAlpha = a; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(0, 4, 48, 11, 0, 0, 7); ctx.fill();
+            const leg = (dx, lift, col) => { ctx.strokeStyle = col; ctx.lineWidth = 19; ctx.beginPath(); ctx.moveTo(0, -88); ctx.lineTo(dx, -lift - 6); ctx.stroke(); ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.ellipse(dx + 8, -lift - 3, 17, 9, 0, 0, 7); ctx.fill(); };
+            leg(-sw, Math.max(0, Math.sin(ph + Math.PI)) * lf, '#2a2d33'); leg(sw, Math.max(0, Math.sin(ph)) * lf, '#1c1917');
+            const arm = (kk, col, hold) => { const hx = o.up ? kk * 34 : hold ? 46 : -kk * sw * .9, hy = o.up ? -232 : hold ? -98 : -104; ctx.strokeStyle = col; ctx.lineWidth = 14; ctx.beginPath(); ctx.moveTo(0, -152); ctx.lineTo(hx, hy); ctx.stroke(); ctx.fillStyle = SK; ctx.beginPath(); ctx.arc(hx, hy, 8.5, 0, 7); ctx.fill(); return [hx, hy]; };
+            ctx.save(); ctx.translate(0, -88); ctx.rotate(o.lean || 0); ctx.translate(0, 88);
+            arm(-1, '#2f333a', false);
+            ctx.fillStyle = '#3a3f47'; ctx.beginPath(); ctx.roundRect(-23, -166, 46, 86, 18); ctx.fill();
+            ctx.fillStyle = SK; ctx.beginPath(); ctx.arc(5, -192, 24, 0, 7); ctx.fill();
+            ctx.fillStyle = '#3b2412'; ctx.beginPath(); ctx.arc(1, -197, 25, Math.PI * .92, Math.PI * 1.95); ctx.fill();
+            ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(17, -192, 3.4, 0, 7); ctx.fill();
+            const h = arm(1, '#3a3f47', o.mag);
+            if (o.mag) { const cx = h[0] + 26, cy = h[1] + 30; ctx.strokeStyle = '#2b2d31'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(h[0], h[1]); ctx.lineTo(cx - 14, cy - 16); ctx.stroke(); ctx.fillStyle = 'rgba(190,230,250,.55)'; ctx.beginPath(); ctx.arc(cx, cy, 26, 0, 7); ctx.fill(); ctx.lineWidth = 7; ctx.stroke(); }
+            if (o.sweat !== undefined) for (let j = 0; j < 3; j++) { const f = ((o.sweat * 1.3 + j * .33) % 1), sx = -16 - j * 15, sy = -222 + f * 50; ctx.globalAlpha = a * (1 - f); ctx.fillStyle = WATER; ctx.beginPath(); ctx.arc(sx, sy, 5.5, 0, 7); ctx.moveTo(sx - 4.5, sy - 2); ctx.lineTo(sx, sy - 13); ctx.lineTo(sx + 4.5, sy - 2); ctx.fill(); }
+            ctx.restore(); ctx.restore();
+        }
+        // ===== LIBRARY: END =====
+
+        async function prepareIdentity() {
+            try { await loadFonts(); } catch (e) { logToConsole('تعذّر تحميل الخطوط: ' + e.message, 'warn'); }
+            if (AUDIO_URLS.length) {
+                const bufs = [];
+                for (const u of AUDIO_URLS) bufs.push(await fetchAndDecodeAudio(u));
+                audioBuffer = concatenateAudioBuffers(bufs).buffer;
+                CONFIG.duration = audioBuffer.duration;
+            }
+        }
+
+        // ===== SCENES: BEGIN =====
+        async function drawSceneAtTime(time) {
+            const tt = time * BASE / CONFIG.duration;   // زمن المشاهد التقديري (يتمدد على الصوت)
+            const mt = tt * .45;                        // الحركة أبطأ قليلاً (قرار المشروع)
+            MT = mt;
+            ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H);
+            let dk = 0;
+            const S = (a, b, fn) => { const al = win(tt, a, b); if (al > 0) fn(tt - a, al); };
+            const P = (u, d) => E(u / d);
+            const BG = al => { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H); ctx.restore(); dk = Math.max(dk, al); };
+            const sc = k => tt - wt(k);                 // ثواني منذ بداية الكلمة رقم k
+            const X7 = pxn(KC);
+    
+            // ① 0 → 5.2 — «الحجة الجيدة جسر»: الجسر يُبنى لوحاً لوحاً من اليمين (بطيء)
+            S(0, wt(12), (u, al) => {
+                focus(0, 40, 0, { s: 1.34 + u * .008, ry: .3, rx: .3 }, -15, 25);
+                IR(W / 2, H * .55, 1400, ER(u / 1.5), () => {
+                    const ra = al * P(u - 1.9, .8);
+                    baseDraw(al);
+                    planksDraw(i => { const p = E((u - .35 - i * .09) / .5); return { a: al * p, dy: -(1 - p) * 120 }; }, 12, 62);
+                    railsDraw(true, 12, 62, ra);
+                    cubesDraw([P(sc(5), .5), P(sc(5) - .2, .5), P(sc(5) - .4, .5)], al);
+                    flagDraw(al, P(sc(8) - .2, 1.4));
+                    railsDraw(false, 12, 62, ra);
+                });
+                const t1 = sp(470, -215, 0), t2 = sp(-470, -250, 0);
+                T('الحُجَّةُ الجَيِّدَةُ جِسرٌ', W / 2, 190, 84, '400', INK, al * P(u - .2, .7) * (1 - E((tt - 1.55) / .5)), 'center', 'rtl', FD);
+                T('الأَدِلَّة', t1.x, t1.y, 62, '700', INK, al * P(sc(6), .6));
+                T('النَّتيجَة', t2.x, t2.y, 62, '700', INK, al * P(sc(10), .6));
+            });
+
+            // ② 5.2 → 10.4 — «لوح مشروخ … يبدو سليماً … حتى تضع قدمك»: تقريب على اللوح ثم يتراجع ويعبر شخص فينكسر
+            S(wt(12), wt(24), (u, al) => {
+                const tFoot = wt(18) + 1.72, tBrk = tFoot + .07;
+                const A0 = { s: 2.8 + Math.min(u, 2.6) * .15, ry: .26, rx: .5, fx: X7, fy: 10, fz: 0, dx: 0, dy: 40 }, B0 = { s: 2.15, ry: .34, rx: .36, fx: X7 + 60, fy: 20, fz: 0, dx: 0, dy: 60 };
+                camMix(A0, B0, EI(sc(18) / 1.4));
+                const cA = tt < wt(18) ? 1 : tt < tFoot - .15 ? 1 - E(sc(18) / .6) : E((tt - (tFoot - .15)) / .2);
+                baseDraw(al);
+                planksDraw(i => i === KC ? { a: al, cr: { p: P(sc(14), .7), a: cA }, brk: tt > tBrk ? tt - tBrk : -1 } : { a: al }, 12, 62);
+                railsDraw(true, 12, 62, al);
+                const wp = C((tt - wt(18)) / (tFoot - wt(18))), br = Math.max(0, tt - tBrk - .08);
+                if (tt >= wt(18)) walker(560 + (X7 - 560) * wp, 0, (tt - wt(18)) * 11, al * C(sc(18) / .2), { still: tt >= tFoot, y: .5 * 620 * br * br, up: tt > tBrk + .05 });
+                railsDraw(false, 12, 62, al);
+                T('لَوحٌ مَشروخٌ', W * .25, 190, 78, '700', INK, al * P(sc(13), .6) * (1 - E(sc(18) / .4)));
+                T('يَبدو سَليماً…', W * .25, 190, 78, '700', INK, al * P(sc(18), .6));
+            });
+
+            // ③ 10.4 → 12.2 — «المغالطة ليست كذبة» (داكن، قصير)
+            S(wt(24), wt(28), (u, al) => {
+                BG(al);
+                T('المُغالَطَة', W * .69, H * .5, 124, '400', '#fff', al * P(sc(25), .6), 'center', 'rtl', FD);
+                const k = P(sc(26), .5);
+                ln(W * .5 - 48, H * .5 - 20, W * .5 + 48, H * .5 - 20, '#fff', 12, al * k); ln(W * .5 - 48, H * .5 + 20, W * .5 + 48, H * .5 + 20, '#fff', 12, al * k); ln(W * .5 + 30, H * .5 - 72, W * .5 - 30, H * .5 + 72, '#fff', 12, al * k);
+                T('كَذِبَة', W * .31, H * .5, 124, '400', '#fff', al * P(sc(27), .6), 'center', 'rtl', FD);
+            });
+
+            // ④ 12.2 → 16.1 — «كل معلوماتك صحيحة … وينهار الجسر مع ذلك» (داكن): خمسة ألواح كلها ✓ ثم تتساقط
+            S(wt(28), wt(37), (u, al) => {
+                BG(al);
+                focus(0, 30, 0, { s: 1.9, ry: .28, rx: .32 }, 0, 120);
+                [-1, 1].forEach(sd => { bx(sd * 455, 103, 0, 260, 154, 300, 0, STONE, al); bx(sd * 455, 13, 0, 260, 26, 300, 0, [GRASS_D, GRASS_D, GRASS_D, GRASS_D, GRASS, GRASS_D], al); });
+                const tk = i => wt(33) + Math.abs(i - 2) * .3;
+                planksDraw(i => { const p = E((u - .1 - i * .07) / .5), d = Math.max(0, tt - tk(i)); return { a: al * p * (1 - C(d / .9)), dy: -(1 - p) * 100 + 700 * d * d, tl: (i % 2 ? 1 : -1) * d * 1.6 }; }, 5, 130);
+                for (let i = 0; i < 5; i++) { const q = sp(pxn(i, 5, 130), -150, 0), pr = C((tt - (12.6 + i * .28)) / .4); ctx.save(); ctx.globalAlpha = al * pr; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(q.x, q.y, 52, 0, 7); ctx.stroke(); ctx.restore(); tick(q.x, q.y, 54, EI(pr), '#fff', al, 11); }
+                T('كُلُّ مَعلوماتِكَ صَحيحَة', W / 2, 190, 76, '700', '#fff', al * P(sc(30), .7));
+                T('وَيَنهارُ الجِسرُ مَعَ ذٰلِك', W / 2, H - 120, 84, '400', '#fff', al * P(sc(33), .7), 'center', 'rtl', FD);
+            });
+
+            // ⑤ 16.1 → 18.7 — «الخلل في الطريق بين الدليل والنتيجة»
+            S(wt(37), wt(43), (u, al) => {
+                focus(0, 40, 0, { s: 1.36 + u * .01, ry: .3, rx: .3 }, -15, 25);
+                baseDraw(al);
+                planksDraw(i => i === KC ? { a: al, cr: { p: 1, a: P(sc(37), .5) } } : { a: al }, 12, 62);
+                railsDraw(true, 12, 62, al);
+                cubesDraw([1, 1, 1], al); flagDraw(al, 1);
+                railsDraw(false, 12, 62, al);
+                const a0 = sp(335, -150, 0), p = E(sc(39) / .9), b0 = sp(335 - 670 * p, -150, 0), r = sp(X7, 0, 0), pulse = .55 + .45 * Math.sin(tt * 8), ra = P(sc(37), .4);
+                if (p > .01) { ln(a0.x, a0.y, b0.x, b0.y, INK, 9, al); const dx = b0.x - a0.x, dy = b0.y - a0.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l; ln(b0.x, b0.y, b0.x - ux * 30 - uy * 17, b0.y - uy * 30 + ux * 17, INK, 9, al); ln(b0.x, b0.y, b0.x - ux * 30 + uy * 17, b0.y - uy * 30 - ux * 17, INK, 9, al); }
+                ctx.save(); ctx.globalAlpha = al * ra * (.6 + .4 * pulse); ctx.strokeStyle = INK; ctx.lineWidth = 9; ctx.beginPath(); ctx.ellipse(r.x, r.y + 10, 92 * r.k, 54 * r.k * 1.1, 0, 0, 7); ctx.stroke(); ctx.restore();
+                const t1 = sp(470, -215, 0), t2 = sp(-470, -250, 0), t3 = sp(0, -235, 0);
+                T('الخَلَل', r.x, r.y + 150, 66, '700', INK, al * P(sc(37), .6));
+                T('الطَّريق', t3.x, t3.y, 62, '700', INK, al * P(sc(39), .6));
+                T('الدَّليل', t1.x, t1.y, 62, '700', INK, al * P(sc(41), .5));
+                T('النَّتيجَة', t2.x, t2.y, 62, '700', INK, al * P(sc(42), .5));
+            });
+
+            // ⑥ 18.7 → 22.6 — «العقل يميل إلى العبور بسرعة … التوقف والفحص متعب»
+            S(wt(43), wt(52), (u, al) => {
+                focus(0, 40, 0, { s: 1.36, ry: .3, rx: .3 }, -15, 25);
+                const t0 = 18.85, tS = wt(48), x = t => 560 - 710 * C((t - t0) / (tS - t0)), run = tt < tS;
+                baseDraw(al);
+                planksDraw(() => ({ a: al }), 12, 62);
+                railsDraw(true, 12, 62, al);
+                if (run) [3, 2, 1].forEach(g => { if (tt - g * .07 > t0) walker(x(tt - g * .07), 0, (tt - g * .07 - t0) * 13, al * .11 * (4 - g), {}); });
+                if (tt > t0) walker(x(tt), 0, (tt - t0) * 13, al * C((tt - t0) / .2), run ? {} : { still: true, lean: .5 * E(sc(48) / .7), mag: sc(48) > .25, sweat: sc(50) > 0 ? sc(50) : undefined });
+                railsDraw(false, 12, 62, al);
+                T('عُبورٌ سَريع', W * .7, 230, 68, '700', INK, al * P(sc(46), .6));
+                T('فَحصٌ مُتعِب', W * .3, 230, 68, '700', INK, al * P(sc(49), .6));
+            });
+
+            // ⑦ 22.6 → 26.5 — «هذه الألواح تحيط بنا في الأخبار والإعلانات ومائدة العائلة» (داكن)
+            S(wt(52), wt(61), (u, al) => {
+                BG(al); CAM.f = 900; CAM.cx = W / 2; CAM.cy = H * .46;
+                const oa = al * (1 - .8 * E(sc(57) / .5)), L = [];
+                for (let j = 0; j < 8; j++) { const th = mt * 1.2 + j * .785; L.push({ j, th, x: Math.cos(th) * 800, z: 380 + Math.sin(th) * 360 }); }
+                L.sort((a, b) => b.z - a.z).forEach(({ j, th, x, z }) => box3(x, Math.sin(j * 2.1) * 150 - 30, z, 210, 32, 80, th * .7 + j, .5 + .3 * Math.sin(j), WOOD, oa * E((u - j * .1) / .6)));
+                const it = [W * .75, W * .5, W * .25], k = [57, 58, 59], cy = H * .45;
+                IR(it[0], cy, 260, ER(sc(57) / .5), () => { const a = al; ctx.save(); ctx.translate(it[0], cy); ctx.rotate(-.06); rect(-115, -150, 230, 300, '#f2f0ea', a, 10); rect(-95, -130, 190, 44, '#141210', a, 4); rect(-95, -70, 190, 70, '#c9ced3', a, 4); for (let i = 0; i < 4; i++) rect(-95, 16 + i * 22, i % 2 ? 150 : 190, 9, '#8a949e', a, 4); ctx.restore(); });
+                IR(it[1], cy, 260, ER(sc(58) / .5), () => { rect(it[1] - 14 - 92, cy + 70, 24, 100, '#8a949e', al, 4); rect(it[1] + 92 - 10, cy + 70, 24, 100, '#8a949e', al, 4); rect(it[1] - 175, cy - 110, 350, 190, '#f5f5f5', al, 10); ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = '#2b2d31'; ctx.lineWidth = 8; ctx.beginPath(); ctx.roundRect(it[1] - 175, cy - 110, 350, 190, 10); ctx.stroke(); ctx.restore(); N('50%', it[1], cy - 15, 108, '700', INK, al); });
+                IR(it[2], cy, 260, ER(sc(59) / .5), () => { const x = it[2]; rect(x - 150, cy - 10, 300, 26, WOOD, al, 8); rect(x - 120, cy + 16, 22, 130, WOOD_D, al, 4); rect(x + 98, cy + 16, 22, 130, WOOD_D, al, 4); [-85, 0, 85].forEach(d => { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(x + d, cy - 14, 42, 12, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#c9ced3'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); circ(x + d, cy - 16, 15, '#e8d8c3', al); }); });
+                ['الأَخبار', 'الإِعلانات', 'مائِدَةُ العائِلَة'].forEach((s, i) => T(s, it[i], H * .78, 62, '700', '#fff', al * P(sc(k[i]), .6)));
+            });
+
+            // ⑧ 26.5 → 29.6 — «مع كل مغالطة سنسير في أربع خطوات»
+            S(wt(61), wt(68), (u, al) => {
+                CAM.f = 900; CAM.cx = W / 2; CAM.cy = H * .5;
+                const cf = 4 * EI(sc(65) / .9);
+                T('مَعَ كُلِّ مُغالَطَةٍ', W / 2, 200, 76, '700', INK, al * P(sc(61), .7));
+                N(String(Math.max(1, Math.round(cf))), W * .6, H * .45, 190, '700', INK, al * P(sc(65), .4));
+                T('خُطُوات', W * .4, H * .46, 120, '400', INK, al * P(sc(66), .7), 'center', 'rtl', FD);
+                for (let i = 0; i < 4; i++) { const p = Math.max(.2 * P(sc(62), .6), E(C(cf - i))); box3((1.5 - i) * 270, 270 - (1 - E(C(cf - i))) * 70, 300, 210, 34, 96, mt * 1.1 + i * .5, .55, WOOD, al * p); }
+            });
+
+            // ⑨ 29.6 → 33.5 — «الحيلة، ثم المثال، ثم سر نجاحها، ثم الرد الذكي»: أربع خطوات على الجسر
+            S(wt(68), wt(77), (u, al) => {
+                focus(0, 0, 0, { s: 1.2, ry: .3, rx: .6 }, -W * .13, 20);
+                const names = ['الحيلَة', 'المِثال', 'سِرُّ نَجاحِها', 'الرَّدُّ الذَّكِيّ'], ks = [68, 70, 72, 75];
+                for (let i = 0; i < 4; i++) {
+                    const z = -255 + i * 170, p = P(sc(ks[i]), .5), last = i === 3;
+                    plankBox(0, 11 - (1 - p) * 90, z, 560, 110, 0, al * p, { ax: true, top: last ? '#2b2724' : WOOD, side: last ? DARK : WOOD_D });
+                    const q = sp(0, 11, z);
+                    N(String(i + 1), q.x, q.y, 72, '700', '#fff', al * p);
+                    T(names[i], W * .79, q.y, 66, '700', INK, al * p);
+                }
+            });
+
+            const c = Math.round(255 * dk); T(TITLE, W - 96, 96, 36, '600', `rgb(${c},${c},${c})`, 1, 'right', 'rtl');   // الهاشتاج آخر شيء
+        }
+        // ===== SCENES: END =====
+
+
+        // ============ FIXED TECHNICAL LAYER (RUNTIME ENGINE) ============
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clamp01(val) { return Math.max(0, Math.min(1, val)); }
+
+        function layoutArabicParagraph(text, font, maxWidth, wordGap, lineHeight, centerY) {
+            ctx.font = font;
+            const words = text.split(' ');
+            const lines = [];
+            let currentWords = [], currentWidth = 0;
+
+            words.forEach(w => {
+                const wordWidth = ctx.measureText(w).width;
+                const testWidth = currentWidth + (currentWords.length > 0 ? wordGap : 0) + wordWidth;
+                if (testWidth > maxWidth && currentWords.length > 0) {
+                    lines.push({ words: currentWords, width: currentWidth });
+                    currentWords = []; currentWidth = 0;
+                }
+                currentWords.push({ text: w, width: wordWidth });
+                currentWidth += (currentWords.length > 1 ? wordGap : 0) + wordWidth;
+            });
+            if (currentWords.length) lines.push({ words: currentWords, width: currentWidth });
+
+            const totalHeight = lines.length * lineHeight;
+            const startY = centerY - totalHeight / 2 + lineHeight / 2;
+            const flatWords = [];
+
+            lines.forEach((line, li) => {
+                const lineY = startY + li * lineHeight;
+                let currentX = (CONFIG.width / 2) + (line.width / 2);
+                line.words.forEach(w => {
+                    const wx = currentX - w.width;
+                    flatWords.push({ text: w.text, x: wx + w.width / 2, y: lineY });
+                    currentX -= (w.width + wordGap);
+                });
+            });
+            return flatWords;
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function concatenateAudioBuffers(buffers) {
+            if (!buffers || buffers.length === 0) throw new Error("لا يوجد AudioBuffer للتجميع");
+            const sampleRate = buffers[0].sampleRate;
+            const channelsCount = buffers[0].numberOfChannels;
+            const totalSamples = buffers.reduce((sum, b) => sum + b.length, 0);
+            const combined = getSharedAudioContext().createBuffer(channelsCount, totalSamples, sampleRate);
+
+            let sampleOffset = 0, timeOffset = 0.0;
+            const segments = [];
+
+            for (const buf of buffers) {
+                for (let ch = 0; ch < channelsCount; ch++) {
+                    combined.getChannelData(ch).set(buf.getChannelData(ch), sampleOffset);
+                }
+                const duration = buf.duration;
+                segments.push({ start: timeOffset, end: timeOffset + duration, duration });
+                sampleOffset += buf.length;
+                timeOffset += duration;
+            }
+            return { buffer: combined, segments };
+        }
+
+        // =========================================================================
+        // محرك B-Roll المحلي الآمن المحدث (In-Memory Blob Buffer)
+        // =========================================================================
+        async function fetchAndPrepareBrollSampler(videoUrl, options = {}) {
+            logToConsole("بدء جلب فيديو B-roll كـ Blob محلي لتفادي مشاكل الشبكة والـ CORS...", "info");
+
+            let finalSrc = videoUrl;
+            let isLocalBlob = false;
+            let fileSizeBytes = 0;
+
+            try {
+                const res = await fetch(videoUrl);
+                if (res.ok) {
+                    const arrayBuf = await res.arrayBuffer();
+                    fileSizeBytes = arrayBuf.byteLength;
+                    const blob = new Blob([arrayBuf], { type: 'video/mp4' });
+                    finalSrc = URL.createObjectURL(blob);
+                    isLocalBlob = true;
+                    logToConsole(`تم حفظ الفيديو محلياً في الذاكرة بنجاح (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB) ✓`, "info");
+                }
+            } catch (err) {
+                logToConsole("تنبيه: سيتم الاعتماد على الرابط المباشر: " + err.message, "warn");
+            }
+
+            const videoEl = document.createElement('video');
+            if (!isLocalBlob) {
+                videoEl.crossOrigin = 'anonymous';
+            }
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.preload = 'auto';
+            videoEl.src = finalSrc;
+
+            await new Promise((resolve, reject) => {
+                let isReady = false;
+                const onReady = () => {
+                    if (!isReady) {
+                        isReady = true;
+                        resolve();
+                    }
+                };
+                videoEl.onloadeddata = onReady;
+                videoEl.oncanplay = onReady;
+                videoEl.onloadedmetadata = onReady;
+                videoEl.onerror = () => {
+                    const err = videoEl.error;
+                    const detail = err ? ` (code ${err.code}: ${err.message})` : '';
+                    reject(new Error(`خطأ في عنصر الفيديو${detail}: ${videoUrl}`));
+                };
+                videoEl.load();
+            });
+
+            const targetW = options.width || CONFIG.width;
+            const targetH = options.height || CONFIG.height;
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = targetW;
+            sampleCanvas.height = targetH;
+            const sampleCtx = sampleCanvas.getContext('2d');
+
+            return {
+                videoEl,
+                fileSizeBytes,
+                duration: videoEl.duration || 10,
+                async getFrameAt(time) {
+                    const maxDur = videoEl.duration && !isNaN(videoEl.duration) ? videoEl.duration : 10;
+                    const seekTime = Math.min(Math.max(time, 0), Math.max(maxDur - 0.01, 0));
+
+                    await new Promise((resolve) => {
+                        videoEl.onseeked = resolve;
+                        videoEl.currentTime = seekTime;
+                    });
+
+                    const vw = videoEl.videoWidth || targetW;
+                    const vh = videoEl.videoHeight || targetH;
+                    const scale = Math.max(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    sampleCtx.clearRect(0, 0, targetW, targetH);
+                    sampleCtx.drawImage(videoEl, dx, dy, dw, dh);
+                    return sampleCanvas;
+                }
+            };
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                // ضبط تجاوب إطار العرض تلقائياً مع أبعاد CONFIG المحددة بالـ vh و vw
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

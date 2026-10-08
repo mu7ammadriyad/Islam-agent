@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>#المغالطات_المنطقية — المشهد 1: الخدعة</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        /* إطار المعاينة المتجاوب بالكامل مع كافة الشاشات بالـ vh و vw */
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f5;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // ============ IDENTITY LAYER (CUSTOM MOTION ENGINE) ============
+        /* PROJECT_META
+        project:       المغالطات المنطقية (الجسر واللوح المشروخ)
+        part:          S01 - الخدعة
+        duration_s:    21
+        rhythm:        سريع
+        script_from:   كُلُّ مَن أَكَلَ الخُبزَ قَبلَ
+        script_to:     القِناعَ عَن سَبعٍ مِنها
+        scenes:        7
+        canvas:        1920x1080 @30fps
+        title_tag:     #المغالطات_المنطقية
+        audio:         none
+        library_added: SKIN, shade, bust, loafPath, loaf, buildStamp, drawImprint, stampTool, glow, maskOutline, eyeHole, mask, dots3, cloud, tx, tvSet, familyTable
+        recurring:     رغيف #c68b4a وختم قاتل أحمر #c62828؛ قناع أبيض بثلاث نقاط؛ خشب #8b5a2b/#b07a3f؛ الرد الذكي لقطة داكنة #141210 بخط Amiri أبيض؛ motion نحو .45 بمنحنى غير خطي (SPD)
+        */
+
+        // ---------- العقد: الأسماء التي تستدعيها الطبقة الثابتة بالاسم ----------
+        const CONFIG = { fps: 30, width: 1920, height: 1080, duration: 21 };
+        const OUTPUT_FILENAME = 'fallacies_s01_hook';
+        let audioBuffer = null;
+
+        // ---------- إعدادات هذا الفيديو ----------
+        const AUDIO_URLS = [];            // روابط https مباشرة للصوت (GitHub raw)؛ فارغة = بلا صوت
+        const TITLE = '#المغالطات_المنطقية';
+        const BASE = 21;                  // 48 كلمة ÷ 2.3 = 20.9 ثانية
+        const W = CONFIG.width, H = CONFIG.height;
+
+        // منحنى سرعة الحركة (غير خطي): بطيء عند الشرح، أسرع عند التعداد والقطع؛ المتوسط نحو .48
+        const SPD = [[0, 5.22, .40], [5.22, 6.09, .70], [6.09, 11.74, .38], [11.74, 14.35, .62], [14.35, 18.26, .50], [18.26, 99, .60]];
+
+        // ---------- أدوات أساسية ----------
+        const C = clamp01;
+        const E = v => 1 - Math.pow(1 - C(v), 3);
+        const EI = v => { v = C(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };
+        const ER = v => { v = C(v); return v >= 1 ? 1 : 1 - Math.pow(2, -10 * v); };
+        const win = (t, a, b, f = .22) => C((t - a) / f) * C((b - t) / f);
+        const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+        const INK = '#1c1917';
+        const FB = "'Readex Pro', sans-serif", FD = "'Lalezar', 'Readex Pro', sans-serif", FQ = "'Amiri', serif", FL = "'Space Grotesk', sans-serif";
+
+        async function loadFonts() {
+            const l = document.createElement('link'); l.rel = 'stylesheet';
+            l.href = 'https://fonts.googleapis.com/css2?family=Lalezar&family=Readex+Pro:wght@400;500;600;700&family=Amiri:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap';
+            document.head.appendChild(l);
+            await Promise.all(['400 40px Lalezar', '600 40px "Readex Pro"', '700 40px "Readex Pro"', '700 40px Amiri', '700 40px "Space Grotesk"'].map(f => document.fonts.load(f, 'ابج 123 Abc')));
+        }
+
+        // نص بقناع صاعد: كلما قلّ al ارتفع النص من الأسفل (بدون pop)
+        function T(s, x, y, size, w = '600', col = '#000', al = 1, align = 'center', dir = 'rtl', fam = FB) {
+            const k = Math.min(1, al); if (k <= 0.01) return;
+            ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * .85, W, size * 1.7); ctx.clip();
+            ctx.globalAlpha = k; ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = dir;
+            ctx.fillText(s, x, y + (1 - k) * size * .9); ctx.restore();
+        }
+        const N = (s, x, y, size, w = '700', col = '#000', al = 1) => T(s, x, y, size, w, col, al, 'center', 'ltr', FL);
+        function rect(x, y, w, h, col, al = 1, r = 0) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); ctx.restore(); }
+        function circ(x, y, r, col, al = 1) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+        function ln(x1, y1, x2, y2, st, w, al) { ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = st; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); }
+        const IR = (cx, cy, R, p, fn) => { if (p <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R * p, 0, 7); ctx.clip(); fn(); ctx.restore(); };
+        function shade(hexc, f) { const c = [1, 3, 5].map(i => parseInt(hexc.substr(i, 2), 16)), t = f < 0 ? 0 : 255, p = Math.abs(f); return `rgb(${c.map(v => Math.round(v + (t - v) * p)).join(',')})`; }   // f من -1 (أغمق) إلى 1 (أفتح)
+
+        // ===== LIBRARY: BEGIN =====
+        const SKIN = ['#f2c9a0', '#d9a36f', '#a9714b', '#7a4a2d'];
+
+        // نص بسيط داخل تحويلات (T تقصّ بإحداثيات الشاشة فلا تصلح تحت translate/scale)
+        function tx(s, x, y, size, w, col, fam = FB, align = 'center', dir = 'rtl') { ctx.save(); ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = dir; ctx.fillText(s, x, y); ctx.restore(); }
+
+        // ثلاث نقاط ∴ (علامة «إذن» المنطقية) مرسومة بالدوائر لتفادي اعتماد الخط
+        function dots3(x, y, r, col, al) { circ(x, y - r * 1.7, r, col, al); circ(x - r * 1.9, y + r * 1.2, r, col, al); circ(x + r * 1.9, y + r * 1.2, r, col, al); }
+
+        // نصف جسم مظلَّل: (x,y) مركز الرأس
+        function bust(x, y, s, skin, hair, shirt, al, look = 0) {
+            ctx.save(); ctx.globalAlpha = al; ctx.translate(x, y); ctx.scale(s, s);
+            let g = ctx.createLinearGradient(-70, 60, 70, 216); g.addColorStop(0, shade(shirt, .18)); g.addColorStop(1, shade(shirt, -.3));
+            ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-78, 66, 156, 150, [58, 58, 6, 6]); ctx.fill();
+            ctx.fillStyle = shade(skin, -.2); ctx.fillRect(-16, 44, 32, 34);
+            g = ctx.createRadialGradient(-18, -22, 6, 0, 0, 62); g.addColorStop(0, shade(skin, .35)); g.addColorStop(.7, skin); g.addColorStop(1, shade(skin, -.24));
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 54, 0, 7); ctx.fill();
+            ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(0, -6, 56, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+            ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(-19 + look * 3, 6, 4.5, 0, 7); ctx.arc(19 + look * 3, 6, 4.5, 0, 7); ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 20, 13, .2 * Math.PI, .8 * Math.PI); ctx.stroke();
+            ctx.restore();
+        }
+
+        // ---------- الرغيف (خبز #c68b4a) ----------
+        function loafPath() {
+            ctx.beginPath(); ctx.moveTo(-320, 8);
+            ctx.bezierCurveTo(-332, -118, -172, -170, 0, -168);
+            ctx.bezierCurveTo(176, -166, 336, -108, 322, 6);
+            ctx.bezierCurveTo(312, 126, 170, 170, -4, 168);
+            ctx.bezierCurveTo(-170, 166, -312, 124, -320, 8);
+            ctx.closePath();
+        }
+        function loaf(cx, cy, s, al, rot = -.06) {
+            if (al <= 0) return;
+            ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+            for (let k = 0; k < 3; k++) { ctx.save(); ctx.translate(16 + k * 6, 30 + k * 7); ctx.scale(1 + k * .025, 1 + k * .035); ctx.globalAlpha = al * .09; ctx.fillStyle = '#000'; loafPath(); ctx.fill(); ctx.restore(); }   // ظل ملامسة ناعم
+            ctx.globalAlpha = al;
+            let g = ctx.createRadialGradient(-80, -70, 30, 0, 0, 380); g.addColorStop(0, '#e3b072'); g.addColorStop(.45, '#c68b4a'); g.addColorStop(1, '#8c5521');
+            ctx.fillStyle = g; loafPath(); ctx.fill();
+            ctx.save(); loafPath(); ctx.clip();
+            g = ctx.createRadialGradient(0, 0, 150, 0, 0, 350); g.addColorStop(0, 'rgba(90,45,10,0)'); g.addColorStop(1, 'rgba(90,45,10,.55)'); ctx.fillStyle = g; ctx.fillRect(-340, -190, 680, 380);   // تعتيم الحواف
+            for (let i = 0; i < 26; i++) { const a = rnd(i) * 6.283, d = Math.sqrt(rnd(i + 31)) * 290; ctx.globalAlpha = al * (.1 + rnd(i + 7) * .12); ctx.fillStyle = '#6b3a12'; ctx.beginPath(); ctx.ellipse(Math.cos(a) * d, Math.sin(a) * d * .55, 10 + rnd(i + 3) * 26, 6 + rnd(i + 5) * 12, rnd(i + 8) * 3, 0, 7); ctx.fill(); }   // بقع التحمير
+            ctx.globalAlpha = al;
+            [-216, -72, 72, 216].forEach((x, i) => {   // القصّات
+                ctx.save(); ctx.translate(x, i % 2 ? 12 : -12); ctx.rotate(-.62);
+                ctx.beginPath(); ctx.moveTo(-96, 0); ctx.quadraticCurveTo(0, -30, 96, 0); ctx.quadraticCurveTo(0, 26, -96, 0); ctx.closePath();
+                const gg = ctx.createLinearGradient(0, -24, 0, 24); gg.addColorStop(0, '#f2d49b'); gg.addColorStop(1, '#d8a45f'); ctx.fillStyle = gg; ctx.fill();
+                ctx.strokeStyle = 'rgba(100,55,15,.65)'; ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.stroke();
+                ctx.strokeStyle = 'rgba(244,210,150,.9)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-90, -6); ctx.quadraticCurveTo(0, -44, 90, -6); ctx.stroke();
+                ctx.restore();
+            });
+            for (let i = 0; i < 80; i++) { const x = (rnd(i + 90) * 2 - 1) * 300, y = (rnd(i + 130) * 2 - 1) * 150; ctx.globalAlpha = al * (.1 + rnd(i + 4) * .22); ctx.fillStyle = '#fff6e5'; ctx.beginPath(); ctx.arc(x, y, 1.5 + rnd(i + 21) * 4.5, 0, 7); ctx.fill(); }   // دقيق مرشوش
+            ctx.globalAlpha = al;
+            g = ctx.createRadialGradient(-110, -95, 8, -110, -95, 190); g.addColorStop(0, 'rgba(255,238,200,.38)'); g.addColorStop(1, 'rgba(255,238,200,0)'); ctx.fillStyle = g; ctx.fillRect(-340, -190, 680, 380);   // لمعة
+            ctx.restore();
+            loafPath(); ctx.strokeStyle = 'rgba(92,48,14,.75)'; ctx.lineWidth = 6; ctx.stroke();
+            ctx.restore();
+        }
+
+        // ---------- الختم وأثره (أحمر #c62828) ----------
+        let STAMP_IMG = null;
+        function buildStamp() {   // يُبنى مرة واحدة في prepareIdentity
+            const w = 700, h = 300, c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+            x.fillStyle = '#c62828'; x.strokeStyle = '#c62828'; x.lineWidth = 16; x.beginPath(); x.roundRect(12, 12, w - 24, h - 24, 34); x.stroke();
+            x.lineWidth = 5; x.beginPath(); x.roundRect(36, 36, w - 72, h - 72, 20); x.stroke();
+            x.font = '400 220px Lalezar, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.direction = 'rtl'; x.fillText('قاتل', w / 2, h / 2 + 10);
+            x.globalCompositeOperation = 'destination-out';   // نسيج الحبر: نقاط تمحو أجزاء منه
+            for (let i = 0; i < 260; i++) { x.globalAlpha = .25 + rnd(i + 3) * .55; x.beginPath(); x.arc(rnd(i) * w, rnd(i + 400) * h, .8 + rnd(i + 17) * 3.2, 0, 7); x.fill(); }
+            for (let i = 0; i < 9; i++) { x.globalAlpha = .5; x.lineWidth = 2 + rnd(i + 5) * 3; x.strokeStyle = '#000'; x.beginPath(); const x0 = rnd(i + 600) * w, y0 = rnd(i + 650) * h; x.moveTo(x0, y0); x.lineTo(x0 + 50 + rnd(i + 700) * 90, y0 + (rnd(i + 710) - .5) * 24); x.stroke(); }
+            STAMP_IMG = c;
+        }
+        function drawImprint(cx, cy, s, rot, al) {
+            if (!STAMP_IMG || al <= 0) return;
+            ctx.save(); ctx.globalAlpha = Math.min(1, al) * .93; ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s); ctx.drawImage(STAMP_IMG, -350, -150); ctx.restore();
+        }
+        function stampTool(cx, cy, h, al) {   // h: الارتفاع عن الرغيف من 0 (لامس) إلى 1 (عالٍ)؛ منظور علوي بظل يقترب
+            if (al <= 0) return;
+            const sc = 1 + .32 * h;
+            ctx.save(); ctx.translate(cx, cy); ctx.rotate(-.1);
+            for (let k = 0; k < 3; k++) { ctx.save(); ctx.translate(30 * sc + 120 * h + k * 7, 44 * sc + 150 * h + k * 9); ctx.scale(sc * (1 + k * .03), sc * (1 + k * .04)); ctx.globalAlpha = al * (.16 - .04 * h) * (1 - k * .25); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.roundRect(-330, -135, 660, 270, 40); ctx.fill(); ctx.restore(); }
+            ctx.scale(sc, sc); ctx.globalAlpha = al;
+            let g = ctx.createLinearGradient(-330, -135, 330, 135); g.addColorStop(0, '#c08a4a'); g.addColorStop(1, '#8b5a2b');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-330, -135, 660, 270, 40); ctx.fill(); ctx.strokeStyle = '#5e3a16'; ctx.lineWidth = 7; ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,230,190,.45)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(-318, -123, 636, 246, 30); ctx.stroke();
+            g = ctx.createRadialGradient(-34, -38, 8, 0, 0, 108); g.addColorStop(0, '#dca766'); g.addColorStop(.6, '#a56f35'); g.addColorStop(1, '#5e3a16');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 100, 0, 7); ctx.fill(); ctx.strokeStyle = '#4a2c10'; ctx.lineWidth = 6; ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.beginPath(); ctx.ellipse(-36, -44, 34, 18, -.6, 0, 7); ctx.fill();
+            ctx.restore();
+        }
+
+        // ---------- القناع الأبيض (ثوب المنطق) ----------
+        function glow(cx, cy, R, al) {
+            if (al <= 0) return;
+            ctx.save(); ctx.globalAlpha = al; const g = ctx.createRadialGradient(cx, cy, R * .1, cx, cy, R);
+            g.addColorStop(0, 'rgba(229,57,53,.95)'); g.addColorStop(.45, 'rgba(198,40,40,.55)'); g.addColorStop(1, 'rgba(198,40,40,0)');
+            ctx.fillStyle = g; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R); ctx.restore();
+        }
+        function maskOutline() {
+            ctx.moveTo(0, -250); ctx.bezierCurveTo(130, -252, 215, -190, 220, -90); ctx.bezierCurveTo(224, 0, 195, 90, 160, 150);
+            ctx.bezierCurveTo(120, 215, 55, 262, 0, 268); ctx.bezierCurveTo(-55, 262, -120, 215, -160, 150);
+            ctx.bezierCurveTo(-195, 90, -224, 0, -220, -90); ctx.bezierCurveTo(-215, -190, -130, -252, 0, -250); ctx.closePath();
+        }
+        function eyeHole(d) { ctx.moveTo(d * 34, -14); ctx.bezierCurveTo(d * 60, -64, d * 138, -66, d * 166, -22); ctx.bezierCurveTo(d * 140, 4, d * 70, 8, d * 34, -14); ctx.closePath(); }
+        function mask(cx, cy, s, rot, al) {
+            if (al <= 0) return;
+            ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s); ctx.globalAlpha = al;
+            const path = () => { ctx.beginPath(); maskOutline(); eyeHole(-1); eyeHole(1); };
+            let g = ctx.createRadialGradient(-70, -110, 20, 0, 0, 380); g.addColorStop(0, '#ffffff'); g.addColorStop(.5, '#efede9'); g.addColorStop(1, '#bdb7ae');
+            path(); ctx.fillStyle = g; ctx.fill('evenodd');   // ثقبا العينين يُظهران ما خلف القناع
+            ctx.save(); path(); ctx.clip('evenodd');
+            g = ctx.createLinearGradient(0, 60, 0, 270); g.addColorStop(0, 'rgba(70,60,50,0)'); g.addColorStop(1, 'rgba(70,60,50,.38)'); ctx.fillStyle = g; ctx.fillRect(-230, 40, 460, 240);
+            ctx.fillStyle = 'rgba(255,255,255,.55)'; [-1, 1].forEach(d => { ctx.beginPath(); ctx.ellipse(d * 98, 78, 54, 26, d * -.5, 0, 7); ctx.fill(); });
+            ctx.fillStyle = 'rgba(80,70,60,.10)'; ctx.beginPath(); ctx.moveTo(-14, 10); ctx.lineTo(14, 10); ctx.lineTo(24, 110); ctx.lineTo(-24, 110); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#8f8981'; ctx.lineWidth = 8; ctx.lineCap = 'round'; [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(d * 176, -92); ctx.quadraticCurveTo(d * 104, -138, d * 34, -88); ctx.stroke(); });
+            ctx.strokeStyle = '#a19b92'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-76, 176); ctx.quadraticCurveTo(0, 214, 76, 176); ctx.stroke();
+            ctx.restore();
+            dots3(0, -172, 10, '#3d3a36', al);
+            path(); ctx.strokeStyle = '#8d877e'; ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.stroke();
+            ctx.restore();
+        }
+
+        // ---------- أماكن الخداع: عائلة وتلفاز ورأس ----------
+        function cloud(cx, cy, s, al) {   // سحابة تفكير
+            ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s);
+            const B = [[-120, 26, 62], [-52, -34, 76], [46, -40, 80], [122, 18, 64], [4, 44, 84]];
+            ctx.globalAlpha = al * .12; ctx.fillStyle = '#000'; B.forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(x + 8, y + 16, r, 0, 7); ctx.fill(); });
+            ctx.globalAlpha = al; ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 7; B.forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); });
+            ctx.fillStyle = '#fff'; B.forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(x, y, r - 3.5, 0, 7); ctx.fill(); });
+            ctx.restore();
+        }
+        function tvSet(cx, cy, s, tk, al) {   // tk: زمن حركة الشريط الإخباري
+            ctx.save(); ctx.globalAlpha = al; ctx.translate(cx, cy); ctx.scale(s, s);
+            ctx.fillStyle = '#2b2d31'; ctx.beginPath(); ctx.moveTo(-70, 168); ctx.lineTo(70, 168); ctx.lineTo(112, 210); ctx.lineTo(-112, 210); ctx.closePath(); ctx.fill();
+            let g = ctx.createLinearGradient(0, -176, 0, 176); g.addColorStop(0, '#4a4e55'); g.addColorStop(1, '#1f2124');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-262, -176, 524, 352, 28); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(-260, -174, 520, 348, 27); ctx.stroke();
+            ctx.save(); ctx.beginPath(); ctx.roundRect(-236, -150, 472, 300, 14); ctx.clip();
+            g = ctx.createLinearGradient(0, -150, 0, 150); g.addColorStop(0, '#2c5877'); g.addColorStop(1, '#1d3d57'); ctx.fillStyle = g; ctx.fillRect(-236, -150, 472, 300);
+            ctx.fillStyle = 'rgba(255,255,255,.07)'; for (let i = 0; i < 5; i++) ctx.fillRect(-236 + i * 100, -150, 46, 300);
+            ctx.fillStyle = '#1f2f4d'; ctx.beginPath(); ctx.roundRect(-76, 34, 152, 120, [52, 52, 0, 0]); ctx.fill();
+            ctx.fillStyle = '#d9a984'; ctx.fillRect(-14, 20, 28, 26);
+            g = ctx.createRadialGradient(-12, -26, 4, 0, -10, 44); g.addColorStop(0, '#f8dcbc'); g.addColorStop(1, '#e0b087'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -10, 40, 0, 7); ctx.fill();
+            ctx.fillStyle = '#3b2a1e'; ctx.beginPath(); ctx.arc(0, -16, 42, Math.PI * 1.04, Math.PI * 1.96); ctx.fill();
+            ctx.fillStyle = '#d32f2f'; ctx.fillRect(-236, 92, 472, 58);
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(116, 102, 104, 38, 8); ctx.fill();
+            tx('عاجل', 168, 122, 30, '700', '#c62828');
+            ctx.save(); ctx.beginPath(); ctx.rect(-226, 100, 330, 42); ctx.clip(); ctx.fillStyle = 'rgba(255,255,255,.85)';
+            for (let i = 0; i < 6; i++) { const x = ((i * 66 + tk * 350) % 396) - 226; ctx.beginPath(); ctx.roundRect(x, 118, 40, 8, 4); ctx.fill(); }
+            ctx.restore();
+            ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(-236, -150); ctx.lineTo(-40, -150); ctx.lineTo(-236, 70); ctx.closePath(); ctx.fill();
+            ctx.restore(); ctx.restore();
+        }
+        function familyTable(cx, cy, s, al) {
+            ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s);
+            [['#f2c9a0', '#3b2a1e', '#e53935'], ['#d9a36f', '#1c1917', '#1e88e5'], ['#a9714b', '#2b1b12', '#43a047'], ['#f2c9a0', '#8a5a2b', '#fdd835']].forEach(([sk, hr, sh], i) => bust(-195 + i * 130, -70, .78, sk, hr, sh, al, 0));
+            ctx.globalAlpha = al; let g = ctx.createLinearGradient(0, 34, 0, 68); g.addColorStop(0, '#c48a4b'); g.addColorStop(1, '#a56f35');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-290, 34, 580, 34, 12); ctx.fill();
+            rect(-270, 68, 540, 78, '#8b5a2b', al, 6); rect(-270, 68, 540, 12, 'rgba(0,0,0,.18)', al);
+            [-190, 190].forEach(x => { ctx.globalAlpha = al; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#cfd3d8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, 50, 62, 12, 0, 0, 7); ctx.fill(); ctx.stroke(); });
+            loaf(0, 44, .2, al, 0);
+            ctx.restore();
+        }
+        // ===== LIBRARY: END =====
+
+        async function prepareIdentity() {
+            try { await loadFonts(); } catch (e) { logToConsole('تعذّر تحميل الخطوط: ' + e.message, 'warn'); }
+            buildStamp();
+            if (AUDIO_URLS.length) {
+                const bufs = [];
+                for (const u of AUDIO_URLS) bufs.push(await fetchAndDecodeAudio(u));
+                audioBuffer = concatenateAudioBuffers(bufs).buffer;   // يرجع { buffer, segments }
+                CONFIG.duration = audioBuffer.duration;               // مدة الفيديو = مدة الصوت
+            }
+        }
+
+        // ===== SCENES: BEGIN =====
+        async function drawSceneAtTime(time) {
+            const tt = time * BASE / CONFIG.duration;                                                      // زمن المشاهد التقديري (يتمدد على الصوت)
+            const mt = SPD.reduce((s, [a, b, v]) => s + Math.max(0, Math.min(tt, b) - a) * v, 0);         // زمن الحركة غير الخطي
+            ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H);
+            let dk = 0;
+            const S = (a, b, fn, fi = .07, fo = .07) => { const al = (fi ? C((tt - a) / fi) : 1) * (fo ? C((b - tt) / fo) : 1); if (al > 0) fn(tt - a, al); };   // قطع سريع: تلاشٍ شبه فوري
+            const P = (u, d) => E(u / d);
+            const BG = al => { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#141210'; ctx.fillRect(0, 0, W, H); ctx.restore(); dk = Math.max(dk, al); };
+
+            // 1 (0 → 5.22) الرغيف + عدّاد «قبل 100 عام» ثم يُختم «قاتل» عند «يقتل»
+            S(0, 5.22, (u, al) => {
+                const mv = EI((u - 3.0) / .9);
+                const lx = W * (.64 - .14 * mv), ly = H * (.5 + .02 * mv), ls = 1.3 + .2 * mv;
+                const op = ER(u / 1.3), draw = () => loaf(lx, ly, ls, al);
+                if (op < .999) IR(lx, ly, 600, op, draw); else draw();
+                const cA = al * (1 - C((u - 3.0) / .5));
+                T('قَبلَ', W * .25, H * .32, 60, '600', '#555', cA * P(u - 1.7, .6));
+                N(String(Math.round(100 * EI((u - .3) / 2.3))), W * .25, H * .5, 210, '700', '#000', cA * P(u - .2, .7));
+                T('عام', W * .25, H * .68, 84, '700', '#000', cA * P(u - 2.6, .5));
+                const ink = C((u - 4.3) / .12), ix = lx + 6, iy = ly - 8;
+                drawImprint(ix, iy, .85, -.1, al * ink);
+                for (let i = 0; i < 12; i++) { const a = rnd(i + 60) * 6.283, rx = 330 + rnd(i + 80) * 70, ry = 150 + rnd(i + 90) * 50; circ(lx + Math.cos(a) * rx * .85, ly + Math.sin(a) * ry * .85, 2 + rnd(i + 70) * 5, '#c62828', al * ink * .75); }
+                const hv = u < 4.4 ? 1 - EI((u - 3.35) / .95) : EI((u - 4.4) / .4);
+                stampTool(ix, iy, hv, al * C((u - 3.35) / .3) * (1 - C((u - 4.55) / .3)));
+            }, 0, .07);
+
+            // 2 (5.22 → 6.09) لقطة داكنة سريعة: «ضحكتَ؟ جيّد.»
+            S(5.22, 6.09, (u, al) => {
+                BG(al);
+                T('ضَحِكتَ؟', W / 2, H * .4, 190, '700', '#fff', al * P(u, .25), 'center', 'rtl', FQ);
+                T('جَيِّد.', W / 2, H * .63, 150, '700', '#fff', al * P(u - .43, .25), 'center', 'rtl', FQ);
+            }, .05, .05);
+
+            // 3 (6.09 → 9.13) الحجة السخيفة (يميناً) مقابل حجة تبدو منطقية (يساراً)
+            S(6.09, 9.13, (u, al) => {
+                const dim = 1 - .55 * C((u - 1.4) / .6), rx = W * .72, ry = H * .46;
+                IR(rx, ry, 420, ER(u / .9), () => { loaf(rx, ry, .72, al * dim); drawImprint(rx + 4, ry - 6, .46, -.1, al * dim); });
+                T('حُجَّةٌ سَخيفَة', rx, H * .79, 56, '600', '#555', al * P(u - 1.5, .6));
+                const fx = W * .28, R0 = fx + 220;   // الحافة اليمنى للصيغة الرسمية
+                const bar = (y, w, t0) => { const p = E((u - t0) / .5); rect(R0 - w * p, y, w * p, 26, '#b9bec5', al, 13); };
+                bar(H * .34, 440, .45); bar(H * .42, 340, .65);
+                const rp = E((u - .9) / .5); ln(R0, H * .51, R0 - 480 * rp, H * .51, '#000', 5, al);
+                const cp = E((u - 1.15) / .5); dots3(R0 - 26, H * .595, 9, '#000', al * cp); rect(R0 - 70 - 380 * cp, H * .575, 380 * cp, 40, '#000', al, 20);
+                T('تَبدو مَنطِقِيَّة', fx, H * .79, 56, '700', '#000', al * P(u - 1.7, .6));
+            });
+
+            // 4 (9.13 → 11.74) داكن: قناع أبيض فوق وهج أحمر «متنكّرة في ثوب المنطق»
+            S(9.13, 11.74, (u, al) => {
+                BG(al);
+                const cx = W / 2, cy = H * .45, rise = EI((u - .1) / 1.1);
+                glow(cx, cy, 560, al * C((u - .4) / .8));
+                mask(cx, cy + (1 - rise) * H * .55, 1.1, Math.sin(mt * 2) * .035, al * C(u / .35));
+                T('في ثَوبِ المَنطِق', W / 2, H * .86, 84, '700', '#fff', al * P(u - 1.5, .7), 'center', 'rtl', FQ);
+            });
+
+            // 5 (11.74 → 14.35) «كم مرّة خُدعتَ هذا الأسبوع؟»: أيام الأسبوع وبعضها يحمرّ
+            S(11.74, 14.35, (u, al) => {
+                T('كَم مَرَّةً خُدِعتَ؟', W / 2, H * .24, 120, '400', '#000', al * P(u, .7), 'center', 'rtl', FD);
+                const days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'], hit = [0, 2, 3, 5];
+                days.forEach((d, i) => {
+                    const x = W / 2 + (3 - i) * 250, y = H * .56, pa = al * C((u - (.35 + i * .12)) / .3);
+                    circ(x, y, 84, '#fff', pa); ctx.save(); ctx.globalAlpha = pa; ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 84, 0, 7); ctx.stroke(); ctx.restore();
+                    const fp = hit.includes(i) ? E((u - (1.3 + hit.indexOf(i) * .26)) / .4) : 0;
+                    if (fp > 0) { circ(x, y, 84 * fp, '#c62828', al); const xa = al * C((fp - .5) / .5); ln(x - 26, y - 26, x + 26, y + 26, '#fff', 10, xa); ln(x + 26, y - 26, x - 26, y + 26, '#fff', 10, xa); }
+                    T(d, x, y + 135, 44, '600', '#555', pa);
+                });
+                T('هذا الأسبوع', W / 2, H * .86, 54, '600', '#555', al * P(u - 1.7, .6));
+            });
+
+            // 6 (14.35 → 18.26) ثلاثة أماكن: الجلسة العائلية (يميناً) ← الأخبار ← رأسك أنت
+            S(14.35, 18.26, (u, al) => {
+                const hy = H * .58, hx = W * .19, bob = Math.sin(mt * 3) * 5;
+                const items = [
+                    { x: W * .81, t0: 0, lab: 'الجَلسَةُ العائِلِيَّة', draw: a => familyTable(W * .81, H * .5, 1, a) },
+                    { x: W * .5, t0: 1.3, lab: 'الأَخبار', draw: a => tvSet(W * .5, H * .47, 1.1, mt, a) },
+                    { x: hx, t0: 2.17, lab: 'رَأسُكَ أَنتَ', draw: a => {
+                        bust(hx, hy, 1.25, SKIN[1], '#2b1b12', '#1e88e5', a, 0);
+                        [[36, -90, 10], [58, -140, 15], [78, -195, 20]].forEach(([dx, dy, r]) => { circ(hx + dx, hy + dy, r + 3, '#9aa0a6', a); circ(hx + dx, hy + dy, r, '#fff', a); });
+                        cloud(hx + 30, hy - 345 + bob, .9, a); loaf(hx + 30, hy - 337 + bob, .3, a, -.05); drawImprint(hx + 34, hy - 342 + bob, .18, -.1, a);
+                    } }
+                ];
+                items.forEach(it => {
+                    IR(it.x, H * .5, 460, ER((u - it.t0) / .9), () => it.draw(al));
+                    T(it.lab, it.x, H * .9, 56, '700', '#000', al * P(u - it.t0 - .45, .6));
+                });
+            });
+
+            // 7 (18.26 → نهاية) يُنزع أثر «قاتل» كملصق، ثم دائرة داكنة تتسع و«7»
+            S(18.26, 21.3, (u, al) => {
+                const lx = W * .5, ly = H * .52;
+                loaf(lx, ly, 1.5, al, -.06);
+                const p = EI((u - .43) / .9), ia = 1 - C((p - .3) / .6);
+                if (ia > .01) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 24 * p; ctx.shadowOffsetY = 26 * p; drawImprint(lx + 6 + 40 * p, ly - 8 - 130 * p, .85 + .06 * p, -.1 - .3 * p, al * ia); ctx.restore(); }
+                const R = 1250 * E((u - 1.55) / 1);
+                if (R > 1) {
+                    ctx.save(); ctx.beginPath(); ctx.arc(lx, ly, R, 0, 7); ctx.clip(); ctx.fillStyle = '#141210'; ctx.fillRect(0, 0, W, H); ctx.restore();
+                    dk = Math.max(dk, C((R - 700) / 270));
+                    N('7', W / 2, H * .44, 420, '700', '#fff', C((u - 1.9) / .5));
+                    T('مُغالَطات', W / 2, H * .74, 110, '700', '#fff', C((u - 2.1) / .5), 'center', 'rtl', FQ);
+                }
+            }, .07, 0);
+
+            const c = Math.round(255 * dk); T(TITLE, W - 96, 96, 36, '600', `rgb(${c},${c},${c})`, 1, 'right', 'rtl');   // الهاشتاج آخر شيء
+        }
+        // ===== SCENES: END =====
+
+
+        // ============ FIXED TECHNICAL LAYER (RUNTIME ENGINE) ============
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clamp01(val) { return Math.max(0, Math.min(1, val)); }
+
+        function layoutArabicParagraph(text, font, maxWidth, wordGap, lineHeight, centerY) {
+            ctx.font = font;
+            const words = text.split(' ');
+            const lines = [];
+            let currentWords = [], currentWidth = 0;
+
+            words.forEach(w => {
+                const wordWidth = ctx.measureText(w).width;
+                const testWidth = currentWidth + (currentWords.length > 0 ? wordGap : 0) + wordWidth;
+                if (testWidth > maxWidth && currentWords.length > 0) {
+                    lines.push({ words: currentWords, width: currentWidth });
+                    currentWords = []; currentWidth = 0;
+                }
+                currentWords.push({ text: w, width: wordWidth });
+                currentWidth += (currentWords.length > 1 ? wordGap : 0) + wordWidth;
+            });
+            if (currentWords.length) lines.push({ words: currentWords, width: currentWidth });
+
+            const totalHeight = lines.length * lineHeight;
+            const startY = centerY - totalHeight / 2 + lineHeight / 2;
+            const flatWords = [];
+
+            lines.forEach((line, li) => {
+                const lineY = startY + li * lineHeight;
+                let currentX = (CONFIG.width / 2) + (line.width / 2);
+                line.words.forEach(w => {
+                    const wx = currentX - w.width;
+                    flatWords.push({ text: w.text, x: wx + w.width / 2, y: lineY });
+                    currentX -= (w.width + wordGap);
+                });
+            });
+            return flatWords;
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function concatenateAudioBuffers(buffers) {
+            if (!buffers || buffers.length === 0) throw new Error("لا يوجد AudioBuffer للتجميع");
+            const sampleRate = buffers[0].sampleRate;
+            const channelsCount = buffers[0].numberOfChannels;
+            const totalSamples = buffers.reduce((sum, b) => sum + b.length, 0);
+            const combined = getSharedAudioContext().createBuffer(channelsCount, totalSamples, sampleRate);
+
+            let sampleOffset = 0, timeOffset = 0.0;
+            const segments = [];
+
+            for (const buf of buffers) {
+                for (let ch = 0; ch < channelsCount; ch++) {
+                    combined.getChannelData(ch).set(buf.getChannelData(ch), sampleOffset);
+                }
+                const duration = buf.duration;
+                segments.push({ start: timeOffset, end: timeOffset + duration, duration });
+                sampleOffset += buf.length;
+                timeOffset += duration;
+            }
+            return { buffer: combined, segments };
+        }
+
+        // =========================================================================
+        // محرك B-Roll المحلي الآمن المحدث (In-Memory Blob Buffer)
+        // =========================================================================
+        async function fetchAndPrepareBrollSampler(videoUrl, options = {}) {
+            logToConsole("بدء جلب فيديو B-roll كـ Blob محلي لتفادي مشاكل الشبكة والـ CORS...", "info");
+
+            let finalSrc = videoUrl;
+            let isLocalBlob = false;
+            let fileSizeBytes = 0;
+
+            try {
+                const res = await fetch(videoUrl);
+                if (res.ok) {
+                    const arrayBuf = await res.arrayBuffer();
+                    fileSizeBytes = arrayBuf.byteLength;
+                    const blob = new Blob([arrayBuf], { type: 'video/mp4' });
+                    finalSrc = URL.createObjectURL(blob);
+                    isLocalBlob = true;
+                    logToConsole(`تم حفظ الفيديو محلياً في الذاكرة بنجاح (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB) ✓`, "info");
+                }
+            } catch (err) {
+                logToConsole("تنبيه: سيتم الاعتماد على الرابط المباشر: " + err.message, "warn");
+            }
+
+            const videoEl = document.createElement('video');
+            if (!isLocalBlob) {
+                videoEl.crossOrigin = 'anonymous';
+            }
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.preload = 'auto';
+            videoEl.src = finalSrc;
+
+            await new Promise((resolve, reject) => {
+                let isReady = false;
+                const onReady = () => {
+                    if (!isReady) {
+                        isReady = true;
+                        resolve();
+                    }
+                };
+                videoEl.onloadeddata = onReady;
+                videoEl.oncanplay = onReady;
+                videoEl.onloadedmetadata = onReady;
+                videoEl.onerror = () => {
+                    const err = videoEl.error;
+                    const detail = err ? ` (code ${err.code}: ${err.message})` : '';
+                    reject(new Error(`خطأ في عنصر الفيديو${detail}: ${videoUrl}`));
+                };
+                videoEl.load();
+            });
+
+            const targetW = options.width || CONFIG.width;
+            const targetH = options.height || CONFIG.height;
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = targetW;
+            sampleCanvas.height = targetH;
+            const sampleCtx = sampleCanvas.getContext('2d');
+
+            return {
+                videoEl,
+                fileSizeBytes,
+                duration: videoEl.duration || 10,
+                async getFrameAt(time) {
+                    const maxDur = videoEl.duration && !isNaN(videoEl.duration) ? videoEl.duration : 10;
+                    const seekTime = Math.min(Math.max(time, 0), Math.max(maxDur - 0.01, 0));
+
+                    await new Promise((resolve) => {
+                        videoEl.onseeked = resolve;
+                        videoEl.currentTime = seekTime;
+                    });
+
+                    const vw = videoEl.videoWidth || targetW;
+                    const vh = videoEl.videoHeight || targetH;
+                    const scale = Math.max(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    sampleCtx.clearRect(0, 0, targetW, targetH);
+                    sampleCtx.drawImage(videoEl, dx, dy, dw, dh);
+                    return sampleCanvas;
+                }
+            };
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                // ضبط تجاوب إطار العرض تلقائياً مع أبعاد CONFIG المحددة بالـ vh و vw
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
