@@ -1,0 +1,1013 @@
+# =============================================================================
+# render.yml — فحص + رندر + دمج + نشر فيديوهات المشاهد (ملف واحد فيه كل حاجة)
+#
+# التشغيل من التيرمينال:
+#   gh workflow run render.yml -f scenes="scenes/a.html" -f check_only=true      # فحص بس
+#   gh workflow run render.yml -f scenes="scenes/a.html"                         # رندر كامل
+#   gh workflow run render.yml -f scenes="URL1 URL2 URL3" -f merge=true         # رندر + دمج
+#   gh run watch                                                                 # متابعة
+#   gh run download <run-id> -n TASK_COMPLETE                                    # قراءة النتيجة
+#
+# ملاحظات:
+#   * لازم الملف ده يكون على الـ default branch عشان زرار Run workflow يظهر.
+#   * سكريبتات الفحص والرندر مكتوبة جوه الملف (خطوة Prepare scene and scripts).
+#   * الـ job الواحد حده الأقصى 6 ساعات عند GitHub، فلا تخلي timeout_minutes أكبر من ~340.
+# =============================================================================
+name: Render Videos
+
+run-name: Render videos (${{ inputs.check_only && 'check only' || 'full render' }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenes:
+        description: "روابط https (Raw) أو مسارات ملفات جوه الريبو، مفصولة بمسافة أو سطر جديد"
+        required: true
+        type: string
+      merge:
+        description: "دمج المقاطع بالترتيب في final_merged_video.mp4"
+        required: false
+        type: boolean
+        default: false
+      check_only:
+        description: "فحص المشاهد بس من غير رندر أو Release"
+        required: false
+        type: boolean
+        default: false
+      timeout_minutes:
+        description: "الحد الأقصى لرندر كل مشهد (بالدقايق)"
+        required: false
+        type: number
+        default: 45
+      release_tag:
+        description: "اسم الـ tag (اختياري، الافتراضي video-<رقم التشغيل>)"
+        required: false
+        type: string
+        default: ""
+      release_title:
+        description: "عنوان الـ Release (اختياري)"
+        required: false
+        type: string
+        default: ""
+      release_notes:
+        description: "وصف الـ Release (اختياري)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NODE_VERSION: "22"
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) prepare: قراءة المدخلات، جلب المشاهد، التحقق، وبناء الـ matrix
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Prepare scenes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+      count: ${{ steps.build.outputs.count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Collect and validate scenes
+        id: build
+        env:
+          SCENES_INPUT: ${{ inputs.scenes }}
+        run: |
+          set -euo pipefail
+          err() { echo "::error::$*"; exit 1; }
+
+          mkdir -p scenes_in
+          mapfile -t TOKENS < <(printf '%s' "$SCENES_INPUT" | tr -s '[:space:]' '\n' | sed -e 's/,$//' -e '/^$/d')
+          COUNT=${#TOKENS[@]}
+          (( COUNT >= 1 )) || err "حقل scenes فاضي"
+          (( COUNT <= 20 )) || err "الحد الأقصى 20 مشهد في التشغيل الواحد (المدخل: $COUNT)"
+
+          : > matrix.ndjson
+          {
+            echo "### المشاهد المطلوبة ($COUNT)"
+            echo
+            echo "| # | المصدر | الحجم |"
+            echo "|---|--------|-------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          idx=0
+          for tok in "${TOKENS[@]}"; do
+            idx=$((idx + 1))
+            dest="scenes_in/${idx}.html"
+
+            if [[ "$tok" =~ ^https:// ]]; then
+              curl -fsSL --proto '=https' --proto-redir '=https' \
+                --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 90 \
+                --max-filesize 20000000 -o "$dest" "$tok" \
+                || err "المشهد $idx: فشل جلب الرابط (لازم Raw ومتاح بدون تسجيل دخول): $tok"
+              label="${tok#https://}"
+            elif [[ "$tok" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
+              err "المشهد $idx: الروابط لازم تبدأ بـ https:// ($tok)"
+            else
+              case "$tok" in
+                /*|*..*|*\\*) err "المشهد $idx: المسار غير مسموح (لازم مسار نسبي جوه الريبو): $tok" ;;
+              esac
+              [[ -f "$tok" ]] || err "المشهد $idx: الملف مش موجود في الريبو: $tok"
+              real="$(realpath -e -- "$tok")"
+              [[ "$real" == "$GITHUB_WORKSPACE"/* ]] || err "المشهد $idx: المسار خارج الريبو: $tok"
+              cp -- "$real" "$dest"
+              label="$tok"
+            fi
+            label="${label//[^A-Za-z0-9._\/-]/_}"
+            label="${label:0:80}"
+
+            [[ -s "$dest" ]] || err "المشهد $idx: الملف فاضي"
+            size="$(stat -c %s "$dest")"
+            (( size <= 20000000 )) || err "المشهد $idx: الملف أكبر من 20MB"
+            tail -n 5 "$dest" | grep -qi '</html>' \
+              || err "المشهد $idx: الملف ناقص (مفيش </html> في آخره) — FILE_INCOMPLETE"
+            { grep -q 'prepareIdentity' "$dest" && grep -q 'drawSceneAtTime' "$dest"; } \
+              || err "المشهد $idx: مفيش prepareIdentity / drawSceneAtTime — الملف مش مطابق للعقد أو مقطوع"
+
+            printf '{"idx":%d,"label":"%s"}\n' "$idx" "$label" >> matrix.ndjson
+            echo "| $idx | \`$label\` | $size bytes |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          {
+            echo "matrix=[$(paste -sd, matrix.ndjson)]"
+            echo "count=$COUNT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload scenes
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenes
+          path: scenes_in/
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 2) render: job لكل مشهد بالتوازي (فحص ثم رندر)
+  #    صلاحيات read فقط: كود المشهد بيشتغل جوه Chrome وملوش وصول لأي كتابة
+  # ---------------------------------------------------------------------------
+  render:
+    name: Render #${{ matrix.scene.idx }} (${{ matrix.scene.label }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scene: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      IDX: ${{ matrix.scene.idx }}
+    steps:
+      - name: Download scenes
+        uses: actions/download-artifact@v4
+        with:
+          name: scenes
+          path: scenes_in
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install ffmpeg (if missing)
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          google-chrome --version || echo "::warning::google-chrome مش موجود على الـ runner"
+
+      - name: Install Playwright (library only, uses the runner's Chrome)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          mkdir -p work
+          cd work
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund --loglevel=error "playwright-core@${PLAYWRIGHT_VERSION}"
+
+      - name: Prepare scene and scripts
+        run: |
+          set -euo pipefail
+          cp "scenes_in/${IDX}.html" work/scene.html
+          cd work
+
+          cat << '__LIB_END__' > _lib.js
+          'use strict';
+          // _lib.js — أدوات مشتركة بين _headless_check.js و render-runner.js
+          const http = require('http');
+          const fs = require('fs');
+          const path = require('path');
+          const { chromium } = require('playwright-core');
+
+          const ROOT = process.cwd();
+
+          const MIME = {
+            '.html': 'text/html; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.wav': 'audio/wav',
+            '.mp4': 'video/mp4',
+            '.png': 'image/png',
+            '.svg': 'image/svg+xml',
+            '.woff2': 'font/woff2',
+          };
+
+          // طلبات تخص واجهة الـ HUD فقط (مش بتترسم في الفيديو) فنعتبر فشلها تحذير مش خطأ قاتل
+          const IGNORED_REQUESTS = [/unpkg\.com\/@phosphor-icons\//i, /\/favicon\.ico(\?|$)/i];
+          // تجاهل إضافي اختياري عبر env (regex) — مفيد للاختبار أو لمصادر غير مهمة للفيديو
+          try {
+            const extra = (process.env.IGNORE_REQUESTS_REGEX || '').trim();
+            if (extra) IGNORED_REQUESTS.push(new RegExp(extra, 'i'));
+          } catch (e) {
+            console.log('تحذير: IGNORE_REQUESTS_REGEX غير صالح:', e.message);
+          }
+
+          // WebGL على الـ runner بدون GPU: Chrome الحديث لا يعمل fallback تلقائي لـ SwiftShader
+          const LAUNCH_ARGS = [
+            '--use-gl=angle',
+            '--use-angle=swiftshader',
+            '--enable-unsafe-swiftshader',
+            '--ignore-gpu-blocklist',
+            '--enable-webgl',
+            '--hide-scrollbars',
+            '--disable-dev-shm-usage',
+            '--autoplay-policy=no-user-gesture-required',
+          ];
+
+          function startServer() {
+            return new Promise((resolve) => {
+              const server = http.createServer((req, res) => {
+                let reqPath;
+                try {
+                  reqPath = decodeURIComponent(req.url.split('?')[0]);
+                } catch {
+                  res.writeHead(400); res.end(); return;
+                }
+                if (reqPath === '/' || reqPath === '') reqPath = '/scene.html';
+                const filePath = path.resolve(ROOT, '.' + reqPath);
+                if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
+                  res.writeHead(403); res.end(); return;
+                }
+                fs.readFile(filePath, (err, data) => {
+                  if (err) { res.writeHead(404); res.end('Not found'); return; }
+                  const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+                  res.writeHead(200, { 'Content-Type': type });
+                  res.end(data);
+                });
+              });
+              server.listen(0, '127.0.0.1', () => resolve(server));
+            });
+          }
+
+          async function launchBrowser() {
+            const opts = { args: LAUNCH_ARGS };
+            if (process.env.CHROME_PATH) opts.executablePath = process.env.CHROME_PATH;
+            else opts.channel = process.env.CHROME_CHANNEL || 'chrome';
+            return chromium.launch(opts);
+          }
+
+          // يرجع اسم الـ GPU/renderer لو WebGL شغال، وإلا null
+          async function probeWebGL(page) {
+            return page.evaluate(() => {
+              try {
+                const c = document.createElement('canvas');
+                const gl = c.getContext('webgl2') || c.getContext('webgl');
+                if (!gl) return null;
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'unknown';
+              } catch {
+                return null;
+              }
+            });
+          }
+
+          // يتتبع فشل الطلبات: failed = قاتل، ignored = تحذير فقط
+          function trackNetwork(page) {
+            const failed = [];
+            const ignored = [];
+            const push = (url, msg) => {
+              const aborted = /ERR_ABORTED/.test(msg);
+              (aborted || IGNORED_REQUESTS.some((re) => re.test(url)) ? ignored : failed).push(`${url} — ${msg}`);
+            };
+            page.on('requestfailed', (req) => push(req.url(), req.failure()?.errorText || 'failed'));
+            page.on('response', (res) => { if (res.status() >= 400) push(res.url(), `HTTP ${res.status()}`); });
+            return { failed, ignored };
+          }
+
+          // يشيل الـ stack trace الطويل من رسالة الخطأ ويسيب أول سطر
+          function shortErr(msg) {
+            return String(msg == null ? '' : msg).split('\n    at ')[0].trim();
+          }
+
+          module.exports = { ROOT, startServer, launchBrowser, probeWebGL, trackNetwork, shortErr };
+          __LIB_END__
+
+          cat << '__CHECK_END__' > _headless_check.js
+          'use strict';
+          // _headless_check.js — فحص جاهزية المشهد قبل الرندر
+          // exit 0 = SCENE_OK | exit 1 = خطأ نهائي | exit 2 = خطأ شبكة/مهلة (يستحق إعادة المحاولة)
+          const lib = require('./_lib.js');
+
+          const CHECK_TIMEOUT_MS = Number(process.env.CHECK_TIMEOUT_MS || 120000);
+          const RETRYABLE = /(مهلة|تعذر|تعذّر|فشل (جلب|تحميل|التحميل)|Failed to fetch|NetworkError|net::ERR|ERR_|timeout|timed out|CORS)/i;
+
+          (async () => {
+            // حارس عام: لو أي حاجة علقت نخرج بدل ما الـ job يفضل شغال
+            setTimeout(() => {
+              console.log('SYNTAX_ERROR: watchdog — الفحص تجاوز الحد الأقصى للوقت');
+              process.exit(2);
+            }, CHECK_TIMEOUT_MS + 180000).unref();
+
+            const server = await lib.startServer();
+            const port = server.address().port;
+            const consoleLogs = [];
+            let browser = null;
+            let pageErr = null;
+            let net = { failed: [], ignored: [] };
+            let exitCode = 0;
+
+            const fail = (msg, retryable) => {
+              msg = lib.shortErr(msg);
+              console.log('SYNTAX_ERROR:', msg);
+              if (net.failed.length) console.log('failed_requests:', JSON.stringify(net.failed));
+              if (net.ignored.length) console.log('ignored_requests (تحذير فقط):', JSON.stringify(net.ignored));
+              if (consoleLogs.length) console.log('console_logs (آخر 15):\n' + consoleLogs.slice(-15).join('\n'));
+              exitCode = retryable || net.failed.length || RETRYABLE.test(String(msg)) ? 2 : 1;
+            };
+
+            try {
+              browser = await lib.launchBrowser();
+              const page = await browser.newPage();
+              net = lib.trackNetwork(page);
+              page.on('console', (m) => consoleLogs.push(`[${m.type()}] ${m.text()}`));
+              page.on('pageerror', (e) => { if (!pageErr) pageErr = e.message; });
+
+              await page.goto('about:blank');
+              const gl = await lib.probeWebGL(page);
+              console.log('WEBGL:', gl ? gl : 'غير متاح');
+
+              await page.goto(`http://127.0.0.1:${port}/scene.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+              const start = Date.now();
+              let status = null;
+              while (Date.now() - start < CHECK_TIMEOUT_MS) {
+                status = await page.evaluate(() => window.renderStatus).catch(() => null);
+                if (status === 'ready' || status === 'error' || pageErr) break;
+                await page.waitForTimeout(200);
+              }
+              // نقرأ رسالة الخطأ قبل إغلاق المتصفح
+              const sceneErr = await page.evaluate(() => window.__renderError || null).catch(() => null);
+
+              if (pageErr) {
+                fail(pageErr, false);
+              } else if (status === 'error') {
+                const hint = gl ? '' : ' | تلميح: WebGL غير متاح في المتصفح ده';
+                fail((sceneErr || 'غير معروف') + hint, false);
+              } else if (status !== 'ready') {
+                fail(`لم يكتمل التحضير خلال ${CHECK_TIMEOUT_MS / 1000} ثانية (status=${status})`, true);
+              } else {
+                // نرسم فعلياً 3 فريمات (البداية/المنتصف/النهاية) عشان أخطاء الرسم المتأخرة تظهر قبل الرندر الطويل
+                const meta = await page.evaluate(() => {
+                  const c = document.getElementById('videoCanvas');
+                  return {
+                    total: window.__ofoqTotalFrames,
+                    fps: window.__ofoqFps,
+                    file: window.__ofoqOutputFilename,
+                    w: c ? c.width : 0,
+                    h: c ? c.height : 0,
+                    hasAudio: !!window.__ofoqAudioWavBase64,
+                  };
+                });
+
+                if (!(meta.total > 0) || !(meta.fps > 0)) {
+                  fail(`قيم غير صالحة: totalFrames=${meta.total} fps=${meta.fps}`, false);
+                } else if (!(meta.w > 0) || !(meta.h > 0) || meta.w % 2 || meta.h % 2) {
+                  fail(`أبعاد الكانفاس لازم تكون زوجية وأكبر من صفر (الحالي ${meta.w}x${meta.h}) — ffmpeg/yuv420p مش هيقبلها`, false);
+                } else {
+                  const idxs = [...new Set([0, Math.floor(meta.total / 2), meta.total - 1])];
+                  for (const i of idxs) {
+                    const t0 = Date.now();
+                    let frames;
+                    try {
+                      frames = await page.evaluate(([s]) => window.__ofoqGetFrameBatch(s, 1), [i]);
+                    } catch (e) {
+                      fail(`فشل رسم الفريم ${i}: ${lib.shortErr(e.message)}`, false);
+                      break;
+                    }
+                    if (!Array.isArray(frames) || frames.length !== 1 || !String(frames[0]).startsWith('iVBOR')) {
+                      fail(`الفريم ${i} مش PNG صالح`, false);
+                      break;
+                    }
+                    console.log(`FRAME ${i}/${meta.total - 1} OK (${((Date.now() - t0) / 1000).toFixed(1)}s, ${Math.round(frames[0].length * 0.75 / 1024)} KB)`);
+                  }
+                  if (!exitCode) {
+                    if (pageErr) fail(pageErr, false);
+                    else {
+                      const late = await page.evaluate(() => (window.renderStatus === 'error' ? window.__renderError : null)).catch(() => null);
+                      if (late) fail(late, false);
+                    }
+                  }
+                  if (!exitCode && net.failed.length) fail('طلبات شبكة فشلت', true);
+                  if (!exitCode) {
+                    if (net.ignored.length) console.log('ملاحظة — طلبات متجاهلة (HUD/aborted):', net.ignored.length);
+                    console.log(`INFO: ${meta.w}x${meta.h} @ ${meta.fps}fps, ${meta.total} frames, audio=${meta.hasAudio}, out=${meta.file}`);
+                    console.log('SCENE_OK');
+                  }
+                }
+              }
+            } catch (e) {
+              fail(e.message, false);
+            }
+
+            try { if (browser) await browser.close(); } catch {}
+            try { server.close(); } catch {}
+            process.exit(exitCode);
+          })();
+          __CHECK_END__
+
+          cat << '__RUNNER_END__' > render-runner.js
+          'use strict';
+          // render-runner.js — يرندر scene.html فريم بفريم ويغذي ffmpeg عبر stdin pipe
+          // الإعدادات عبر env: RENDER_TIMEOUT_MIN, FRAME_BATCH, OUT_FILE, RESULT_FILE
+          const { spawn } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
+          const lib = require('./_lib.js');
+
+          const TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MIN || 45) * 60 * 1000;
+          const FRAME_BATCH_SIZE = Math.max(1, Number(process.env.FRAME_BATCH || 12));
+          const FFMPEG_LOG_CAP = 30;
+          const RESULT_FILE = process.env.RESULT_FILE || 'result.json';
+
+          const startTime = Date.now();
+          const remainingMs = () => TIMEOUT_MS - (Date.now() - startTime);
+          const elapsedSec = () => Number(((Date.now() - startTime) / 1000).toFixed(1));
+
+          const consoleLogs = [];
+          const ffmpegLog = [];
+          let net = { failed: [], ignored: [] };
+          let browser = null;
+          let server = null;
+          let ffmpeg = null;
+          let finished = false;
+          let meta = {};
+
+          function writeResult(result) {
+            try { fs.writeFileSync(RESULT_FILE, JSON.stringify(result)); } catch {}
+            console.log(JSON.stringify(result));
+          }
+
+          function baseResult() {
+            return {
+              elapsed_seconds: elapsedSec(),
+              total_frames: meta.totalFrames,
+              fps: meta.fps,
+              width: meta.width,
+              height: meta.height,
+              has_audio: meta.hasAudio,
+              scene_filename: meta.filename,
+              console_logs: consoleLogs.slice(-50),
+              failed_requests: net.failed,
+              ignored_requests: net.ignored,
+              ffmpeg_log: ffmpegLog.slice(-FFMPEG_LOG_CAP),
+            };
+          }
+
+          async function cleanup() {
+            try { if (ffmpeg && ffmpeg.exitCode === null) ffmpeg.kill('SIGKILL'); } catch {}
+            try {
+              if (browser) await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
+            } catch {}
+            try { if (server) server.close(); } catch {}
+          }
+
+          async function fail(errMsg) {
+            if (finished) return;
+            finished = true;
+            writeResult({ success: false, error: lib.shortErr(errMsg), ...baseResult() });
+            await cleanup();
+            process.exit(1);
+          }
+
+          // كتابة فريم في stdin مع احترام الـ backpressure، ومن غير ما تعلّق لو ffmpeg مات
+          function writeFrame(stream, buf) {
+            return new Promise((resolve, reject) => {
+              if (stream.destroyed || stream.writableEnded) { reject(new Error('ffmpeg stdin مقفول')); return; }
+              const done = (fn, arg) => {
+                stream.off('error', onError);
+                stream.off('close', onClose);
+                stream.off('drain', onDrain);
+                fn(arg);
+              };
+              const onError = (e) => done(reject, e);
+              const onClose = () => done(reject, new Error('ffmpeg قفل الـ stdin بدري'));
+              const onDrain = () => done(resolve);
+              stream.once('error', onError);
+              stream.once('close', onClose);
+              if (stream.write(buf)) done(resolve);
+              else stream.once('drain', onDrain);
+            });
+          }
+
+          (async () => {
+            // حارس عام: لو أي خطوة علقت (مثلاً page.evaluate) نفشل بوضوح بدل ما الـ job يفضل شغال
+            setTimeout(() => fail(`Watchdog: الرندر تجاوز المهلة (${TIMEOUT_MS / 60000} دقيقة) وعلق`), TIMEOUT_MS + 60000).unref();
+
+            try {
+              server = await lib.startServer();
+              const port = server.address().port;
+              browser = await lib.launchBrowser();
+              const page = await browser.newPage();
+              net = lib.trackNetwork(page);
+              page.on('console', (m) => consoleLogs.push(`[${m.type()}] ${m.text()}`));
+              page.on('pageerror', (e) => consoleLogs.push(`[pageerror] ${e.message}`));
+
+              await page.goto('about:blank');
+              const gl = await lib.probeWebGL(page);
+              console.log('WEBGL:', gl ? gl : 'غير متاح');
+
+              await page.goto(`http://127.0.0.1:${port}/scene.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+              let prepStatus = null;
+              while (true) {
+                prepStatus = await page.evaluate(() => window.renderStatus).catch(() => null);
+                if (prepStatus === 'ready' || prepStatus === 'error') break;
+                if (remainingMs() <= 0) { prepStatus = 'timeout'; break; }
+                await page.waitForTimeout(200);
+              }
+              if (prepStatus !== 'ready') {
+                const msg = prepStatus === 'timeout'
+                  ? 'TimeoutError: لم يكتمل التحضير خلال المهلة المحددة'
+                  : await page.evaluate(() => window.__renderError).catch(() => 'غير معروف');
+                throw new Error(msg || 'غير معروف');
+              }
+
+              meta = await page.evaluate(() => {
+                const c = document.getElementById('videoCanvas');
+                return {
+                  totalFrames: window.__ofoqTotalFrames,
+                  fps: window.__ofoqFps,
+                  filename: window.__ofoqOutputFilename,
+                  audio: window.__ofoqAudioWavBase64,
+                  width: c ? c.width : 0,
+                  height: c ? c.height : 0,
+                };
+              });
+              const audioBase64 = meta.audio;
+              delete meta.audio;
+              meta.hasAudio = !!audioBase64;
+
+              if (!(meta.totalFrames > 0) || !(meta.fps > 0)) throw new Error(`قيم غير صالحة: totalFrames=${meta.totalFrames} fps=${meta.fps}`);
+              if (!(meta.width > 0) || !(meta.height > 0) || meta.width % 2 || meta.height % 2) {
+                throw new Error(`أبعاد الكانفاس لازم تكون زوجية (الحالي ${meta.width}x${meta.height})`);
+              }
+
+              const outFile = process.env.OUT_FILE || path.basename(meta.filename || 'output.mp4');
+              if (meta.hasAudio) fs.writeFileSync('audio.wav', Buffer.from(audioBase64, 'base64'));
+
+              const ffmpegArgs = [
+                '-y', '-loglevel', 'warning', '-hide_banner',
+                '-thread_queue_size', '512',
+                '-f', 'image2pipe', '-vcodec', 'png',
+                '-framerate', String(meta.fps),
+                '-i', '-',
+                ...(meta.hasAudio ? ['-i', 'audio.wav'] : []),
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '18',
+                ...(meta.hasAudio ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []),
+                '-movflags', '+faststart',
+                outFile,
+              ];
+              ffmpeg = spawn('ffmpeg', ffmpegArgs);
+
+              let ffmpegDied = null;
+              const exitPromise = new Promise((resolve) => {
+                ffmpeg.on('close', (code) => resolve(code));
+                ffmpeg.on('error', (err) => { ffmpegDied = `ffmpeg process error: ${err.message}`; resolve(-1); });
+              });
+              ffmpeg.stdin.on('error', (err) => { if (!ffmpegDied) ffmpegDied = `ffmpeg stdin error: ${err.message}`; });
+              ffmpeg.stderr.on('data', (d) => {
+                ffmpegLog.push(d.toString());
+                if (ffmpegLog.length > FFMPEG_LOG_CAP) ffmpegLog.shift();
+              });
+
+              const renderStart = Date.now();
+              let lastPercent = -1;
+              for (let start = 0; start < meta.totalFrames; start += FRAME_BATCH_SIZE) {
+                if (ffmpegDied) throw new Error(ffmpegDied);
+                if (remainingMs() <= 0) throw new Error('TimeoutError: تجاوز الرندر المهلة المحددة');
+
+                const count = Math.min(FRAME_BATCH_SIZE, meta.totalFrames - start);
+                const batch = await page.evaluate(([s, c]) => window.__ofoqGetFrameBatch(s, c), [start, count]);
+                if (!Array.isArray(batch) || batch.length !== count) {
+                  throw new Error(`الباتش رجّع ${Array.isArray(batch) ? batch.length : 'قيمة غير صالحة'} فريم بدل ${count} (بداية: ${start})`);
+                }
+                for (const base64Frame of batch) {
+                  if (ffmpegDied) throw new Error(ffmpegDied);
+                  await writeFrame(ffmpeg.stdin, Buffer.from(base64Frame, 'base64'));
+                }
+
+                const done = start + count;
+                const percent = Math.floor((done / meta.totalFrames) * 100);
+                if (percent !== lastPercent) {
+                  const rate = (done / Math.max((Date.now() - renderStart) / 1000, 0.001)).toFixed(1);
+                  console.log(`[+${elapsedSec()}s] frames=${done}/${meta.totalFrames} progress=${percent}% speed=${rate}fps`);
+                  lastPercent = percent;
+                }
+              }
+
+              if (ffmpegDied) throw new Error(ffmpegDied);
+              ffmpeg.stdin.end();
+              const exitCode = await exitPromise;
+              if (ffmpegDied) throw new Error(ffmpegDied);
+              if (exitCode !== 0) throw new Error(`ffmpeg exited with code ${exitCode}`);
+              if (!fs.existsSync(outFile) || fs.statSync(outFile).size === 0) throw new Error(`ملف الخرج ${outFile} مش موجود أو فاضي`);
+
+              finished = true;
+              writeResult({ success: true, filename: outFile, size: fs.statSync(outFile).size, ...baseResult() });
+              await cleanup();
+              process.exit(0);
+            } catch (err) {
+              await fail(err && err.message ? err.message : err);
+            }
+          })();
+          __RUNNER_END__
+
+          for f in _lib.js _headless_check.js render-runner.js; do node --check "$f"; done
+          tail -n 3 scene.html | grep -qi '</html>' || { echo "::error::FILE_INCOMPLETE"; exit 1; }
+
+      - name: Pre-flight check (headless)
+        working-directory: work
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Check attempt $attempt"
+            set +e
+            node _headless_check.js 2>&1 | tee check.log
+            code=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $code -eq 0 ]]; then exit 0; fi
+            if [[ $code -ne 2 ]]; then break; fi
+            echo "::warning::المحاولة $attempt فشلت بسبب شبكة/مهلة، هنعيد بعد 5 ثواني"
+            sleep 5
+          done
+          echo "::error::فشل فحص المشهد #${IDX} (راجع اللوج فوق)"
+          exit 1
+
+      - name: Check summary
+        if: ${{ always() }}
+        working-directory: work
+        run: |
+          [[ -f check.log ]] || exit 0
+          {
+            echo "### Check · scene #${IDX}"
+            echo '```'
+            tail -n 40 check.log | cut -c1-600
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render video
+        if: ${{ !inputs.check_only }}
+        working-directory: work
+        env:
+          RENDER_TIMEOUT_MIN: ${{ inputs.timeout_minutes }}
+          FRAME_BATCH: "12"
+          OUT_FILE: part.mp4
+        run: |
+          set -o pipefail
+          node render-runner.js 2>&1 | tee render.log
+
+      - name: Verify output
+        if: ${{ !inputs.check_only }}
+        working-directory: work
+        run: |
+          set -euo pipefail
+          [[ -s part.mp4 ]] || { echo "::error::part.mp4 مش موجود أو فاضي"; exit 1; }
+          expected="$(node -p 'JSON.parse(require("fs").readFileSync("result.json", "utf8")).total_frames')"
+          frames="$(ffprobe -v error -count_frames -select_streams v:0 \
+            -show_entries stream=nb_read_frames -of default=noprint_wrappers=1:nokey=1 part.mp4)"
+          ffprobe -v error -select_streams v:0 \
+            -show_entries stream=codec_name,width,height,r_frame_rate -of csv=p=0 part.mp4
+          [[ "$frames" == "$expected" ]] \
+            || { echo "::error::عدد الفريمات في الفيديو ($frames) مش مطابق للمتوقع ($expected)"; exit 1; }
+          echo "OK: $frames frames"
+
+      - name: Render summary
+        if: ${{ always() && !inputs.check_only }}
+        working-directory: work
+        run: |
+          node - << '__SUMMARY_END__' >> "$GITHUB_STEP_SUMMARY" || echo "::warning::تعذر كتابة الـ Summary"
+          const fs = require('fs');
+          const idx = process.env.IDX;
+          const FENCE = '`'.repeat(3);
+          if (!fs.existsSync('result.json')) {
+            console.log(`### ❌ Render #${idx} — مفيش result.json (فشل قبل بدء الرندر؟ راجع خطوة Check)`);
+            process.exit(0);
+          }
+          const r = JSON.parse(fs.readFileSync('result.json', 'utf8'));
+          if (r.success) {
+            console.log([
+              `### ✅ Render #${idx} — ${r.scene_filename || ''}`, '',
+              '| | |', '|---|---|',
+              `| الأبعاد | ${r.width}×${r.height} @ ${r.fps}fps |`,
+              `| الفريمات | ${r.total_frames} |`,
+              `| صوت | ${r.has_audio} |`,
+              `| الحجم | ${(r.size / 1048576).toFixed(2)} MB |`,
+              `| وقت الرندر | ${r.elapsed_seconds} ثانية |`, '',
+            ].join('\n'));
+          } else {
+            const block = (title, lines, sep) => `<details><summary>${title}</summary>\n\n${FENCE}\n${(lines || []).join(sep)}\n${FENCE}\n</details>\n`;
+            console.log([
+              `### ❌ Render #${idx} فشل`, '',
+              `**الخطأ:** \`${r.error || 'غير معروف'}\``, '',
+              block('console_logs', r.console_logs, '\n'),
+              block('failed_requests', r.failed_requests, '\n'),
+              block('ffmpeg_log', r.ffmpeg_log, ''),
+            ].join('\n'));
+          }
+          __SUMMARY_END__
+
+      - name: Collect outputs
+        if: ${{ !inputs.check_only && always() }}
+        run: |
+          mkdir -p out
+          cp -f work/result.json work/render.log work/check.log out/ 2>/dev/null || true
+          if [[ -s work/part.mp4 ]]; then cp -f work/part.mp4 work/scene.html out/; fi
+
+      - name: Upload rendered part
+        if: ${{ !inputs.check_only && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ matrix.scene.idx }}
+          path: out/
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload failure logs
+        if: ${{ !inputs.check_only && failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderlog-${{ matrix.scene.idx }}
+          path: out/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 3) publish: دمج (اختياري) + Release + رفع + TASK_COMPLETE.json
+  #    merge=true: الكل أو لا شيء. merge=false: بننشر اللي نجح ونفشل الـ run في الآخر.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Merge and publish
+    needs: [prepare, render]
+    if: ${{ !cancelled() && !inputs.check_only && needs.prepare.result == 'success' && (needs.render.result == 'success' || (needs.render.result == 'failure' && !inputs.merge)) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      EXPECTED: ${{ needs.prepare.outputs.count }}
+      MERGE: ${{ inputs.merge }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TITLE: ${{ inputs.release_title }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
+      RUN_NUMBER: ${{ github.run_number }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Download rendered parts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: render-*
+          path: parts
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install ffmpeg (if missing)
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+
+      - name: Assemble, merge and publish
+        id: pub
+        run: |
+          set -euo pipefail
+          err() { echo "::error::$*"; exit 1; }
+          shopt -s nullglob
+
+          # ---------- 1) تجميع المقاطع الناجحة ----------
+          dirs=(parts/render-*)
+          (( ${#dirs[@]} > 0 )) || err "مفيش أي مقطع اترندر بنجاح"
+          mapfile -t dirs < <(printf '%s\n' "${dirs[@]}" | sort -t- -k2,2n)
+
+          mkdir -p release out
+          declare -A used=()
+          ok_idx=(); ok_name=()
+          for d in "${dirs[@]}"; do
+            idx="${d##*-}"
+            if [[ ! -s "$d/part.mp4" || ! -s "$d/scene.html" || ! -f "$d/result.json" ]]; then
+              echo "::warning::المقطع #$idx ناقص ملفات، تم تجاهله"; continue
+            fi
+            ok=""; raw=""
+            read -r ok raw < <(node -p 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); (r.success === true ? "1" : "0") + " " + (r.scene_filename || "")' "$d/result.json" || true)
+            if [[ "$ok" != "1" ]]; then
+              echo "::warning::المقطع #$idx نتيجته فشل أو result.json تالف، تم تجاهله"; continue
+            fi
+            name="${raw%.mp4}"
+            name="${name//[^A-Za-z0-9._-]/_}"
+            while [[ "$name" == [._-]* ]]; do name="${name:1}"; done
+            [[ -n "$name" ]] || name="scene_${idx}"
+            if [[ -n "${used[$name]:-}" ]]; then name="${name}_${idx}"; fi
+            used[$name]=1
+            cp "$d/part.mp4" "release/${name}.mp4"
+            cp "$d/scene.html" "release/${name}.html"
+            ok_idx+=("$idx"); ok_name+=("$name")
+          done
+
+          (( ${#ok_idx[@]} > 0 )) || err "مفيش أي مقطع صالح للنشر"
+          failed_idx=()
+          for ((n = 1; n <= EXPECTED; n++)); do
+            found=0
+            for i in "${ok_idx[@]}"; do [[ "$i" == "$n" ]] && found=1; done
+            (( found )) || failed_idx+=("$n")
+          done
+          if [[ "$MERGE" == "true" && ${#failed_idx[@]} -gt 0 ]]; then
+            err "الدمج مطلوب بس المشاهد (${failed_idx[*]}) ما اترندرتش"
+          fi
+
+          # ---------- 2) الدمج (اختياري) ----------
+          merged_name=""
+          if [[ "$MERGE" == "true" && ${#ok_idx[@]} -gt 1 ]]; then
+            mkdir -p merge
+            : > merge/concat_list.txt
+            first_v=""; first_a=""; reencode=0; total=0
+            for i in "${!ok_idx[@]}"; do
+              n=$((i + 1))
+              f="release/${ok_name[$i]}.mp4"
+              cp "$f" "merge/part_${n}.mp4"
+              echo "file 'part_${n}.mp4'" >> merge/concat_list.txt
+              sv="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate -of csv=p=0 "$f")"
+              sa="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name,sample_rate,channels -of csv=p=0 "$f")"
+              dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f")"
+              total="$(awk -v a="$total" -v b="$dur" 'BEGIN { printf "%.3f", a + b }')"
+              echo "part_${n} (${ok_name[$i]}): video=[$sv] audio=[${sa:-none}] dur=${dur}s"
+              if (( n == 1 )); then
+                first_v="$sv"; first_a="$sa"
+              else
+                [[ "$sv" == "$first_v" ]] || err "المقطع ${ok_name[$i]} مختلف في (الترميز/المقاس/fps) عن الأول: [$sv] ≠ [$first_v]"
+                if [[ -z "$sa" && -n "$first_a" ]] || [[ -n "$sa" && -z "$first_a" ]]; then
+                  err "بعض المقاطع فيها صوت وبعضها لا — مش هينفع الدمج"
+                fi
+                [[ "$sa" == "$first_a" ]] || reencode=1
+              fi
+            done
+
+            concat_copy() {
+              ffmpeg -y -loglevel error -hide_banner -f concat -safe 0 -i concat_list.txt \
+                -c copy -movflags +faststart final_merged_video.mp4
+            }
+            concat_reencode() {
+              local audio_args=(-an)
+              if [[ -n "$first_a" ]]; then audio_args=(-c:a aac -b:a 192k); fi
+              ffmpeg -y -loglevel error -hide_banner -f concat -safe 0 -i concat_list.txt \
+                -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 18 "${audio_args[@]}" \
+                -movflags +faststart final_merged_video.mp4
+            }
+            duration_ok() {
+              local d
+              d="$(ffprobe -v error -show_entries format=duration -of csv=p=0 final_merged_video.mp4 2> /dev/null || echo 0)"
+              awk -v a="$d" -v b="$total" 'BEGIN { x = a - b; if (x < 0) x = -x; exit !(x <= 1.0) }'
+            }
+
+            pushd merge > /dev/null
+            if (( reencode )); then
+              echo "إعدادات الصوت مختلفة بين المقاطع → إعادة ترميز"
+              concat_reencode
+            else
+              if ! concat_copy || ! duration_ok; then
+                echo "::warning::الدمج بـ -c copy فشل أو طلّع مدة غير مطابقة → إعادة ترميز"
+                concat_reencode
+              fi
+            fi
+            duration_ok || err "مدة الفيديو المدمج مش مطابقة لمجموع المقاطع"
+            popd > /dev/null
+            cp merge/final_merged_video.mp4 release/final_merged_video.mp4
+            merged_name="final_merged_video.mp4"
+          elif [[ "$MERGE" == "true" ]]; then
+            echo "::notice::مشهد واحد بس، مفيش دمج"
+          fi
+
+          # ---------- 3) الـ Release والرفع ----------
+          TAG="${RELEASE_TAG:-video-${RUN_NUMBER}}"
+          [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || err "release_tag غير صالح (حروف/أرقام/نقطة/شرطة فقط): $TAG"
+          TITLE="${RELEASE_TITLE:-$TAG}"
+          NOTES="${RELEASE_NOTES:-تم الرندر عبر GitHub Actions (run #${RUN_NUMBER}): ${RUN_URL}}"
+
+          if gh release view "$TAG" --repo "$GH_REPO" > /dev/null 2>&1; then
+            echo "الـ Release $TAG موجود، هنرفع عليه بـ --clobber"
+          else
+            gh release create "$TAG" --repo "$GH_REPO" --title "$TITLE" --notes "$NOTES"
+          fi
+          gh release upload "$TAG" release/* --repo "$GH_REPO" --clobber
+
+          gh release view "$TAG" --repo "$GH_REPO" --json assets --jq '.assets[].name' > assets.txt
+          for f in release/*; do
+            grep -qxF "$(basename "$f")" assets.txt || err "الملف $(basename "$f") مش ظاهر في الـ Release بعد الرفع"
+          done
+
+          # ---------- 4) TASK_COMPLETE.json والـ Summary ----------
+          base="https://github.com/${GH_REPO}/releases/download/${TAG}"
+          : > videos.tsv
+          for i in "${!ok_name[@]}"; do
+            printf '%s\t%s\n' "${ok_idx[$i]}" "${ok_name[$i]}" >> videos.tsv
+          done
+          merged_url=""
+          if [[ -n "$merged_name" ]]; then merged_url="${base}/${merged_name}"; fi
+          if (( ${#failed_idx[@]} > 0 )); then
+            summary="تم نشر ${#ok_idx[@]} من $EXPECTED مشهد — فشل: ${failed_idx[*]}"
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+          else
+            summary="تم بنجاح رندر وتصدير ورفع كافة الفيديوهات والأصول المطلوبة"
+          fi
+
+          BASE="$base" TAG="$TAG" SUMMARY="$summary" MERGED_URL="$merged_url" \
+          FAILED="${failed_idx[*]:-}" REL_URL="https://github.com/${GH_REPO}/releases/tag/${TAG}" \
+          node - << '__TC_END__'
+          const fs = require('fs');
+          const e = process.env;
+          const videos = fs.readFileSync('videos.tsv', 'utf8').split('\n').filter(Boolean).map((line) => {
+            const [idx, name] = line.split('\t');
+            return {
+              identifier: name,
+              scene_index: Number(idx),
+              release_video_url: `${e.BASE}/${name}.mp4`,
+              release_scene_html_url: `${e.BASE}/${name}.html`,
+            };
+          });
+          const out = {
+            summary: e.SUMMARY,
+            release_tag: e.TAG,
+            release_url: e.REL_URL,
+            run_url: e.RUN_URL,
+            videos,
+            merged_video_url: e.MERGED_URL || null,
+            failed_scenes: (e.FAILED || '').split(' ').filter(Boolean).map(Number),
+          };
+          fs.writeFileSync('out/TASK_COMPLETE.json', JSON.stringify(out, null, 2));
+          __TC_END__
+          cat out/TASK_COMPLETE.json
+
+          {
+            echo "### 🎬 النتيجة"
+            echo
+            echo "**Release:** [$TAG](https://github.com/${GH_REPO}/releases/tag/${TAG})"
+            echo
+            echo "| الفيديو | كود المشهد |"
+            echo "|---------|------------|"
+            for n in "${ok_name[@]}"; do
+              echo "| [${n}.mp4](${base}/${n}.mp4) | [${n}.html](${base}/${n}.html) |"
+            done
+            if [[ -n "$merged_name" ]]; then
+              echo
+              echo "**المدمج:** [${merged_name}](${merged_url})"
+            fi
+            if (( ${#failed_idx[@]} > 0 )); then
+              echo
+              echo "⚠️ مشاهد فشلت: ${failed_idx[*]}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload TASK_COMPLETE
+        if: ${{ always() && hashFiles('out/TASK_COMPLETE.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TASK_COMPLETE
+          path: out/TASK_COMPLETE.json
+          retention-days: 30
+
+      - name: Fail if some scenes failed
+        if: ${{ steps.pub.outputs.partial == 'true' }}
+        run: |
+          echo "::error::تم نشر جزء من المشاهد فقط — راجع TASK_COMPLETE.json (failed_scenes)"
+          exit 1
