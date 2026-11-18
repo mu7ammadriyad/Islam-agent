@@ -324,7 +324,7 @@ jobs:
           // exit 0 = SCENE_OK | exit 1 = خطأ نهائي | exit 2 = خطأ شبكة/مهلة (يستحق إعادة المحاولة)
           const lib = require('./_lib.js');
 
-          const CHECK_TIMEOUT_MS = Number(process.env.CHECK_TIMEOUT_MS || 120000);
+          const CHECK_TIMEOUT_MS = Number(process.env.CHECK_TIMEOUT_MS || 600000);
           const RETRYABLE = /(مهلة|تعذر|تعذّر|فشل (جلب|تحميل|التحميل)|Failed to fetch|NetworkError|net::ERR|ERR_|timeout|timed out|CORS)/i;
 
           (async () => {
