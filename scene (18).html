@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>برودة القطب</title>
+
+    <!-- FONT IMPORTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background-color: #07090e; color: #ffffff;
+            font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 10px;
+        }
+        /* إطار المعاينة المتجاوب بالكامل مع كافة الشاشات بالـ vh و vw */
+        #viewport {
+            position: relative;
+            max-height: 86vh;
+            max-width: 94vw;
+            width: auto;
+            height: auto;
+            background: #f5f5f5;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #hud {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(14px);
+            color: #0a0f1d; padding: 6px 14px; border-radius: 30px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.06); z-index: 10;
+        }
+        .spinner {
+            width: 12px; height: 12px; border: 2px solid #e5e5ea;
+            border-top: 2px solid #0a0f1d; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #controls-overlay {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 10; background: rgba(10, 15, 29, 0.92);
+            padding: 6px 12px; border-radius: 40px; backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .btn {
+            font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 14px;
+            border-radius: 20px; border: none; cursor: pointer; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-preview { background: rgba(255, 255, 255, 0.12); color: #f8fafc; }
+        .btn-preview:hover { background: rgba(255, 255, 255, 0.22); }
+        .btn-render { background: #0a0f1d; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-render:hover { background: #1e293b; }
+        #console-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 680px; max-width: 92vw; height: 400px; background: #090d16;
+            border: 1px solid #1e293b; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            z-index: 100; display: none; flex-direction: column; overflow: hidden;
+        }
+        #console-header {
+            background: #151d2d; padding: 12px 18px; display: flex;
+            justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold;
+        }
+        #console-output {
+            flex: 1; padding: 14px; overflow-y: auto; font-family: monospace;
+            font-size: 12px; color: #cbd5e1; background: #060910; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 4px; }
+        .log-info { color: #38bdf8; }
+        .log-warn { color: #facc15; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <canvas id="videoCanvas"></canvas>
+        <div id="hud"><div class="spinner" id="spinner"></div><span id="status-text">جاري إعداد المشهد...</span></div>
+        <div id="controls-overlay">
+            <button class="btn btn-preview" id="btn-replay"><i class="ph ph-arrow-counter-clockwise"></i> تشغيل المعاينة</button>
+            <button class="btn btn-preview" id="btn-toggle-console"><i class="ph ph-terminal-window"></i> سجل الأخطاء</button>
+            <button class="btn btn-render" id="btn-render-start"><i class="ph-fill ph-video-camera"></i> تصدير الفيديو</button>
+        </div>
+    </div>
+
+    <div id="console-modal">
+        <div id="console-header">
+            <span><i class="ph ph-terminal-window"></i> سجل النظام والعمليات البرمجية</span>
+            <button class="btn btn-preview" id="btn-close-console" style="color:#fff; background:#ef4444; border:none; padding:4px 14px;">إغلاق</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <script type="module">
+        // ============ IDENTITY LAYER (CUSTOM MOTION ENGINE) ============
+const CONFIG = { fps: 30, width: 1920, height: 1080, duration: 20 };
+const OUTPUT_FILENAME = 'arctic_cold_part_01';
+let audioBuffer = null;
+let sampler = null;
+
+const AUDIO_URLS = [];
+const BROLL_URL = 'https://raw.githubusercontent.com/mu7ammadriyad/Assets/main/%D8%A7%D8%AD%D8%B3%D9%86%D8%AA_%D9%88%D9%84%D9%83%D9%86_%D8%B9%D8%A7%D9%88%D8%B2%D9%87_%D9%81%D9%89_%D8%A7%D9%84%D8%A8%D8%AF%D8%A7%D9%8A%D9%87_20261004162610.mp4';
+const TITLE = '#برودة_القطب';
+const STRICT_INIT = true;
+const BASE = 20;
+const W = CONFIG.width, H = CONFIG.height;
+
+const C = clamp01;
+const E = v => 1 - Math.pow(1 - C(v), 3);
+const EI = v => { v = C(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };
+const win = (t, a, b, f = .22) => C((t - a) / f) * C((b - t) / f);
+const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const INK = '#1c1917';
+const FB = "'Readex Pro', sans-serif", FD = FB, FQ = FB, FL = FB;
+
+const IMG = {};
+const withTimeout = (p, ms, what) => { let tm; return Promise.race([p, new Promise((_, rej) => { tm = setTimeout(() => rej(new Error('انتهت المهلة (' + ms / 1000 + 'ث) أثناء: ' + what)), ms); })]).finally(() => clearTimeout(tm)); };
+const FONT_SPECS = ['300 40px "Readex Pro"', '400 40px "Readex Pro"', '500 40px "Readex Pro"', '600 40px "Readex Pro"', '700 40px "Readex Pro"'];
+const FONT_SAMPLE = 'ابجدهوز ًٌٍَُِّْ ٠١٢٣ 0123456789 ABCabc \u2212\u00B0';
+async function loadFonts() {
+    try {
+        const l = document.createElement('link'); l.rel = 'stylesheet';
+        l.href = 'https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap';
+        await withTimeout(new Promise((res, rej) => { l.onload = res; l.onerror = () => rej(new Error('تعذّر تحميل CSS الخطوط (الشبكة؟)')); document.head.appendChild(l); }), 20000, 'تحميل CSS الخطوط');
+        const r = await withTimeout(Promise.all(FONT_SPECS.map(f => document.fonts.load(f, FONT_SAMPLE).catch(e => { throw new Error('تعذّر تحميل الخط «' + f + '»: ' + e.message); }))), 20000, 'تحميل ملفات الخطوط');
+        await document.fonts.ready;
+        const miss = FONT_SPECS.filter((f, i) => !r[i].length || r[i].some(ff => ff.status !== 'loaded'));
+        if (miss.length) throw new Error('خطوط لم تُحمَّل: ' + miss.join(' | '));
+        logToConsole('✓ الخطوط جاهزة (' + FONT_SPECS.length + ')', 'info');
+    } catch (e) { if (STRICT_INIT) throw e; logToConsole('تحذير: خطوط بديلة تُستعمل. ' + e.message, 'warn'); }
+}
+async function loadImage(url) {
+    try {
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        await withTimeout(new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('فشل التحميل (الرابط أو CORS)')); img.src = url; }), 20000, 'تحميل صورة');
+        try { await img.decode(); } catch (e) {  }
+        return img;
+    } catch (e) { logToConsole('صورة ' + url + ' ← بديل بالكانفاس: ' + e.message, 'warn'); return null; }
+}
+
+function T(s, x, y, size, w = '600', col = '#000', al = 1, align = 'center', dir = 'rtl', fam = FB) {
+    const k = Math.min(1, al); if (k <= 0.01) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * .85, W, size * 1.7); ctx.clip();
+    ctx.globalAlpha = k; ctx.fillStyle = col; ctx.font = `${w} ${size}px ${fam}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.direction = dir;
+    ctx.fillText(s, x, y + (1 - k) * size * .9); ctx.restore();
+}
+const N = (s, x, y, size, w = '700', col = '#000', al = 1) => T(s, x, y, size, w, col, al, 'center', 'ltr', FL);
+const gr = (x0, y0, x1, y1, c) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, c[0]); g.addColorStop(1, c[1]); return g; };
+function rect(x, y, w, h, col, al = 1, r = 0) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); ctx.restore(); }
+function circ(x, y, r, col, al = 1) { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+function ln(x1, y1, x2, y2, st, w, al) { ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = st; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); }
+
+const CAM = { f: 900, cx: W / 2, cy: H / 2 };
+const rotX3 = (p, a) => ({ x: p.x, y: p.y * Math.cos(a) - p.z * Math.sin(a), z: p.y * Math.sin(a) + p.z * Math.cos(a) });
+const rotY3 = (p, a) => ({ x: p.x * Math.cos(a) + p.z * Math.sin(a), y: p.y, z: -p.x * Math.sin(a) + p.z * Math.cos(a) });
+const proj = p => { const k = CAM.f / (CAM.f + p.z); return { x: CAM.cx + p.x * k, y: CAM.cy + p.y * k, k }; };
+function shade(hexc, f) { const c = [1, 3, 5].map(i => parseInt(hexc.substr(i, 2), 16)), t = f < 0 ? 0 : 255, p = Math.abs(f); return `rgb(${c.map(v => Math.round(v + (t - v) * p)).join(',')})`; }
+function poly(pts, fill, al = 1, stroke = null, lw = 3) { ctx.save(); ctx.globalAlpha = al; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke(); } ctx.restore(); }
+function box3(cx, cy, cz, w, h, d, ry, rx, col, al = 1) {
+    const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(([x, y, z]) => { const p = rotX3(rotY3({ x: x * w / 2, y: y * h / 2, z: z * d / 2 }, ry), rx); return { x: p.x + cx, y: p.y + cy, z: p.z + cz }; });
+    const F = [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [4, 5, 1, 0], [3, 2, 6, 7]], L = { x: -.45, y: -.7, z: -.55 }, ll = Math.hypot(L.x, L.y, L.z);
+    F.map(f => { const p = f.map(i => V[i]), c = { x: (p[0].x + p[2].x) / 2, y: (p[0].y + p[2].y) / 2, z: (p[0].z + p[2].z) / 2 };
+        const a = { x: p[1].x - p[0].x, y: p[1].y - p[0].y, z: p[1].z - p[0].z }, b = { x: p[3].x - p[0].x, y: p[3].y - p[0].y, z: p[3].z - p[0].z };
+        let n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; const nl = Math.hypot(n.x, n.y, n.z) || 1; n = { x: n.x / nl, y: n.y / nl, z: n.z / nl };
+        if (n.x * (c.x - cx) + n.y * (c.y - cy) + n.z * (c.z - cz) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+        return { p, n, c }; })
+        .filter(o => o.n.x * o.c.x + o.n.y * o.c.y + o.n.z * (o.c.z + CAM.f) < 0)
+        .sort((a, b) => b.c.z - a.c.z)
+        .forEach(o => poly(o.p.map(proj), shade(col, Math.max(0, (o.n.x * L.x + o.n.y * L.y + o.n.z * L.z) / ll) * .65 - .3), al, shade(col, -.45), 3));
+}
+function sphere3(cx, cy, cz, r, col, al = 1) { const q = proj({ x: cx, y: cy, z: cz }), rr = r * q.k; ctx.save(); ctx.globalAlpha = al; const g = ctx.createRadialGradient(q.x - rr * .35, q.y - rr * .38, rr * .1, q.x, q.y, rr); g.addColorStop(0, shade(col, .55)); g.addColorStop(.6, col); g.addColorStop(1, shade(col, -.5)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, rr, 0, 7); ctx.fill(); ctx.restore(); return q; }
+function shadow3(x, y, z, rx, al = .2) { const q = proj({ x, y, z }); ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(q.x, q.y, rx * q.k, rx * q.k * .28, 0, 0, 7); ctx.fill(); ctx.restore(); }
+
+// ---- دوال هذا المقطع: ميزان الحرارة (2D) ----
+function glass(cx, al) {
+    ctx.save(); ctx.globalAlpha = al; ctx.lineWidth = 10; ctx.strokeStyle = '#bdbdbd'; ctx.fillStyle = '#ffffff';
+    const tube = () => { ctx.beginPath(); ctx.roundRect(cx - 40, 160, 80, 680, [40, 40, 0, 0]); };
+    const bulb = () => { ctx.beginPath(); ctx.arc(cx, 830, 92, 0, 7); };
+    tube(); ctx.stroke(); bulb(); ctx.stroke(); tube(); ctx.fill(); bulb(); ctx.fill();
+    ctx.restore();
+}
+function mercuryBulb(cx, al) {
+    circ(cx, 830, 70, '#8e1b1b', al);
+    ctx.save(); ctx.globalAlpha = al;
+    const g = ctx.createRadialGradient(cx - 20, 810, 6, cx, 830, 64);
+    g.addColorStop(0, '#e35a50'); g.addColorStop(.6, '#c62828'); g.addColorStop(1, '#a31f1f');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, 830, 64, 0, 7); ctx.fill();
+    ctx.restore();
+    circ(cx - 24, 806, 14, '#ffffff', al * .3);
+}
+
+async function prepareIdentity() {
+    await loadFonts();
+    if (AUDIO_URLS.length) {
+        const bufs = [];
+        for (const u of AUDIO_URLS) bufs.push(await withTimeout(fetchAndDecodeAudio(u), 120000, 'تحميل الصوت ' + u));
+        audioBuffer = concatenateAudioBuffers(bufs).buffer;
+        CONFIG.duration = audioBuffer.duration;
+    }
+    sampler = await withTimeout(fetchAndPrepareBrollSampler(BROLL_URL), 120000, 'تحميل فيديو B-roll');
+    await sampler.getFrameAt(0);
+    logToConsole('✓ التهيئة اكتملت', 'info');
+}
+
+async function drawSceneAtTime(time) {
+    const tt = time * BASE / CONFIG.duration, mt = tt * .6;
+    ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H);
+    let dk = 0;
+    const S = (a, b, fn, f = .22) => { const al = win(tt, a, b, f); if (al > 0) fn(tt - a, al); };
+    const P = (u, d) => E(u / d);
+    const BG = al => { ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = '#141210'; ctx.fillRect(0, 0, W, H); ctx.restore(); dk = Math.max(dk, al); };
+
+    // مشهد 1 (0 → 5.4) فاتح، 2D: ميزان حرارة يهبط من 37 إلى -40
+    S(0, 5.4, (u, al) => {
+        const cx = W * .34, yT = 210, yB = 750, by = 830;
+        const yy = v => yT + (40 - v) / 80 * (yB - yT);
+        const p = EI((u - 1.2) / 2.8), tv = 37 - 77 * p, a1 = al * C(u / 1);
+        glass(cx, a1);
+        for (let v = -40; v <= 40; v += 10) {
+            const mj = v % 20 === 0, y = yy(v);
+            ln(cx - 52, y, cx - (mj ? 90 : 72), y, mj ? '#555' : '#999', 3, a1);
+            if (mj) N((v < 0 ? '\u2212' : '') + Math.abs(v), cx - 160, y, 44, '500', '#555', al * P(u - .3, .8));
+        }
+        const yL = yy(tv);
+        rect(cx - 19, yL - 3, 38, by - yL + 3, '#8e1b1b', a1, [19, 19, 0, 0]);
+        rect(cx - 16, yL, 32, by - yL, gr(cx - 16, 0, cx + 16, 0, ['#e0453b', '#b02222']), a1, [16, 16, 0, 0]);
+        rect(cx - 9, yL + 14, 5, Math.max(0, by - yL - 60), '#ffffff', a1 * .35, 3);
+        mercuryBulb(cx, a1);
+        ln(cx + 54, yy(37), cx + 100, yy(37), '#555', 3, a1);
+        T('جسم الإنسان', cx + 120, yy(37), 52, '600', '#555', al * P(u - .8, .7), 'left', 'rtl');
+        ln(cx + 54, yy(-40), cx + 100, yy(-40), '#555', 3, al * C((u - 3.3) / .5));
+        T('شتاء القطب', cx + 120, yy(-40), 52, '600', '#555', al * P(u - 3.4, .7), 'left', 'rtl');
+        const col = `rgb(${Math.round(198 - 167 * p)},${Math.round(40 + 71 * p)},${Math.round(40 + 134 * p)})`;
+        const tr = Math.round(tv);
+        N((tr < 0 ? '\u2212' : '') + Math.abs(tr) + '\u00B0', W * .72, H * .45, 190, '700', col, al * P(u - 1, .7));
+    }, .4);
+
+    // مشهد 2 (5 → 10.4) داكن، 2D: بلورة ثلج سداسية تنمو (صامت)
+    S(5, 10.4, (u, al) => {
+        BG(al);
+        const g = E((u - .5) / 3), rot = mt * .1, R = 340, cx = W * .5, cy = H * .5, L = R * g;
+        ctx.save(); ctx.globalAlpha = al;
+        const gl = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
+        gl.addColorStop(0, 'rgba(143,208,255,.22)'); gl.addColorStop(1, 'rgba(143,208,255,0)');
+        ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+        const SB = [.3, .55, .8], LB = [.42, .32, .2];
+        for (let i = 0; i < 6; i++) {
+            const a = rot + i * Math.PI / 3 - Math.PI / 2, dx = Math.cos(a), dy = Math.sin(a);
+            ln(cx, cy, cx + dx * L, cy + dy * L, '#bfe6ff', 9, al);
+            for (let k = 0; k < 3; k++) {
+                const bl = R * LB[k] * C((g - SB[k]) / .2);
+                if (bl <= 0) continue;
+                const px = cx + dx * R * SB[k], py = cy + dy * R * SB[k];
+                for (const s of [-1, 1]) { const b = a + s * Math.PI / 3; ln(px, py, px + Math.cos(b) * bl, py + Math.sin(b) * bl, '#bfe6ff', 7, al); }
+            }
+        }
+        circ(cx, cy, 16, '#e8f6ff', al * C(u / .6));
+    }, .4);
+
+    // مشهد 3 (9.6 → 20) فيديو B-roll يدخل بتلاشٍ متقاطع فوق المشهد الداكن
+    const vAl = C((tt - 9.6) / .8);
+    if (vAl > 0) {
+        const fr = await sampler.getFrameAt(Math.max(0, tt - 10));
+        ctx.save(); ctx.globalAlpha = vAl;
+        ctx.drawImage(fr, 0, 0, W, H);
+        const tg = ctx.createLinearGradient(0, 0, 0, 300);
+        tg.addColorStop(0, 'rgba(0,0,0,.5)'); tg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = tg; ctx.fillRect(0, 0, W, 300);
+        ctx.restore();
+        dk = Math.max(dk, vAl);
+    }
+
+    const c = Math.round(255 * dk);
+    T(TITLE, W - 96, 96, 36, '600', `rgb(${c},${c},${c})`, 1, 'right', 'rtl');
+}
+
+        // ============ FIXED TECHNICAL LAYER (RUNTIME ENGINE) ============
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('spinner');
+
+        let audioAudioEl = null;
+        let sharedAudioCtx = null;
+        let state = { currentTime: 0, isRendering: false, animationFrameId: null };
+
+        window.renderStatus = 'loading';
+
+        function logToConsole(msg, type = 'info') {
+            const output = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clamp01(val) { return Math.max(0, Math.min(1, val)); }
+
+        function layoutArabicParagraph(text, font, maxWidth, wordGap, lineHeight, centerY) {
+            ctx.font = font;
+            const words = text.split(' ');
+            const lines = [];
+            let currentWords = [], currentWidth = 0;
+
+            words.forEach(w => {
+                const wordWidth = ctx.measureText(w).width;
+                const testWidth = currentWidth + (currentWords.length > 0 ? wordGap : 0) + wordWidth;
+                if (testWidth > maxWidth && currentWords.length > 0) {
+                    lines.push({ words: currentWords, width: currentWidth });
+                    currentWords = []; currentWidth = 0;
+                }
+                currentWords.push({ text: w, width: wordWidth });
+                currentWidth += (currentWords.length > 1 ? wordGap : 0) + wordWidth;
+            });
+            if (currentWords.length) lines.push({ words: currentWords, width: currentWidth });
+
+            const totalHeight = lines.length * lineHeight;
+            const startY = centerY - totalHeight / 2 + lineHeight / 2;
+            const flatWords = [];
+
+            lines.forEach((line, li) => {
+                const lineY = startY + li * lineHeight;
+                let currentX = (CONFIG.width / 2) + (line.width / 2);
+                line.words.forEach(w => {
+                    const wx = currentX - w.width;
+                    flatWords.push({ text: w.text, x: wx + w.width / 2, y: lineY });
+                    currentX -= (w.width + wordGap);
+                });
+            });
+            return flatWords;
+        }
+
+        function audioBufferToWavBlob(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const out = new DataView(new ArrayBuffer(length));
+            let channels = [], sample, offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+            while (offset < buffer.length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        function getSharedAudioContext() {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return sharedAudioCtx;
+        }
+
+        async function fetchAndDecodeAudio(url) {
+            if (!/^https:\/\//i.test(url)) throw new Error(`رابط صوت غير آمن: ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`فشل جلب الصوت: ${url}`);
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength < 1024) throw new Error(`حجم الملف صغير جداً: ${url}`);
+            return getSharedAudioContext().decodeAudioData(arrayBuf);
+        }
+
+        function concatenateAudioBuffers(buffers) {
+            if (!buffers || buffers.length === 0) throw new Error("لا يوجد AudioBuffer للتجميع");
+            const sampleRate = buffers[0].sampleRate;
+            const channelsCount = buffers[0].numberOfChannels;
+            const totalSamples = buffers.reduce((sum, b) => sum + b.length, 0);
+            const combined = getSharedAudioContext().createBuffer(channelsCount, totalSamples, sampleRate);
+
+            let sampleOffset = 0, timeOffset = 0.0;
+            const segments = [];
+
+            for (const buf of buffers) {
+                for (let ch = 0; ch < channelsCount; ch++) {
+                    combined.getChannelData(ch).set(buf.getChannelData(ch), sampleOffset);
+                }
+                const duration = buf.duration;
+                segments.push({ start: timeOffset, end: timeOffset + duration, duration });
+                sampleOffset += buf.length;
+                timeOffset += duration;
+            }
+            return { buffer: combined, segments };
+        }
+
+        // =========================================================================
+        // محرك B-Roll المحلي الآمن المحدث (In-Memory Blob Buffer)
+        // =========================================================================
+        async function fetchAndPrepareBrollSampler(videoUrl, options = {}) {
+            logToConsole("بدء جلب فيديو B-roll كـ Blob محلي لتفادي مشاكل الشبكة والـ CORS...", "info");
+
+            let finalSrc = videoUrl;
+            let isLocalBlob = false;
+            let fileSizeBytes = 0;
+
+            try {
+                const res = await fetch(videoUrl);
+                if (res.ok) {
+                    const arrayBuf = await res.arrayBuffer();
+                    fileSizeBytes = arrayBuf.byteLength;
+                    const blob = new Blob([arrayBuf], { type: 'video/mp4' });
+                    finalSrc = URL.createObjectURL(blob);
+                    isLocalBlob = true;
+                    logToConsole(`تم حفظ الفيديو محلياً في الذاكرة بنجاح (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB) ✓`, "info");
+                }
+            } catch (err) {
+                logToConsole("تنبيه: سيتم الاعتماد على الرابط المباشر: " + err.message, "warn");
+            }
+
+            const videoEl = document.createElement('video');
+            if (!isLocalBlob) {
+                videoEl.crossOrigin = 'anonymous';
+            }
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.preload = 'auto';
+            videoEl.src = finalSrc;
+
+            await new Promise((resolve, reject) => {
+                let isReady = false;
+                const onReady = () => {
+                    if (!isReady) {
+                        isReady = true;
+                        resolve();
+                    }
+                };
+                videoEl.onloadeddata = onReady;
+                videoEl.oncanplay = onReady;
+                videoEl.onloadedmetadata = onReady;
+                videoEl.onerror = () => {
+                    const err = videoEl.error;
+                    const detail = err ? ` (code ${err.code}: ${err.message})` : '';
+                    reject(new Error(`خطأ في عنصر الفيديو${detail}: ${videoUrl}`));
+                };
+                videoEl.load();
+            });
+
+            const targetW = options.width || CONFIG.width;
+            const targetH = options.height || CONFIG.height;
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = targetW;
+            sampleCanvas.height = targetH;
+            const sampleCtx = sampleCanvas.getContext('2d');
+
+            return {
+                videoEl,
+                fileSizeBytes,
+                duration: videoEl.duration || 10,
+                async getFrameAt(time) {
+                    const maxDur = videoEl.duration && !isNaN(videoEl.duration) ? videoEl.duration : 10;
+                    const seekTime = Math.min(Math.max(time, 0), Math.max(maxDur - 0.01, 0));
+
+                    await new Promise((resolve) => {
+                        videoEl.onseeked = resolve;
+                        videoEl.currentTime = seekTime;
+                    });
+
+                    const vw = videoEl.videoWidth || targetW;
+                    const vh = videoEl.videoHeight || targetH;
+                    const scale = Math.max(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    sampleCtx.clearRect(0, 0, targetW, targetH);
+                    sampleCtx.drawImage(videoEl, dx, dy, dw, dh);
+                    return sampleCanvas;
+                }
+            };
+        }
+
+        function startPreviewLoop() {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            if (audioAudioEl) {
+                audioAudioEl.currentTime = 0;
+                audioAudioEl.play().catch(e => logToConsole("تنبيه الصوت: " + e.message, 'warn'));
+            }
+
+            const startTime = performance.now();
+            async function loop(now) {
+                if (state.isRendering) return;
+                const elapsed = (now - startTime) / 1000;
+                const currTime = audioAudioEl ? audioAudioEl.currentTime : (elapsed % CONFIG.duration);
+                state.currentTime = currTime;
+                await drawSceneAtTime(currTime);
+
+                if (currTime < CONFIG.duration) {
+                    state.animationFrameId = requestAnimationFrame(loop);
+                } else {
+                    statusText.textContent = "جاهز للعرض والتصدير ✓";
+                    spinner.style.display = 'none';
+                }
+            }
+            state.animationFrameId = requestAnimationFrame(loop);
+        }
+
+        const OFOQ_FRAME_FORMAT = 'image/png';
+        window.__ofoqTotalFrames = 0;
+        window.__ofoqFps = 0;
+        window.__ofoqOutputFilename = '';
+        window.__ofoqAudioWavBase64 = null;
+
+        async function __ofoqGetFrameBatch(startFrame, count) {
+            const frames = [];
+            for (let i = 0; i < count; i++) {
+                const frameIndex = startFrame + i;
+                if (frameIndex >= window.__ofoqTotalFrames) break;
+                const timestamp = frameIndex / window.__ofoqFps;
+                await drawSceneAtTime(timestamp);
+                const dataUrl = canvas.toDataURL(OFOQ_FRAME_FORMAT);
+                frames.push(dataUrl.substring(dataUrl.indexOf(',') + 1));
+            }
+            return frames;
+        }
+        window.__ofoqGetFrameBatch = __ofoqGetFrameBatch;
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById('btn-replay').addEventListener('click', () => {
+            statusText.textContent = "جاري عرض المعاينة...";
+            spinner.style.display = 'inline-block';
+            startPreviewLoop();
+        });
+
+        document.getElementById('btn-toggle-console').addEventListener('click', () => {
+            const modal = document.getElementById('console-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        document.getElementById('btn-close-console').addEventListener('click', () => {
+            document.getElementById('console-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-render-start').addEventListener('click', () => {
+            logToConsole("التصدير الفعلي يتم عبر render-runner.js (Node + ffmpeg).", 'warn');
+        });
+
+        async function init() {
+            try {
+                await prepareIdentity();
+                canvas.width = CONFIG.width;
+                canvas.height = CONFIG.height;
+
+                // ضبط تجاوب إطار العرض تلقائياً مع أبعاد CONFIG المحددة بالـ vh و vw
+                const viewport = document.getElementById('viewport');
+                viewport.style.aspectRatio = `${CONFIG.width} / ${CONFIG.height}`;
+                viewport.style.width = `min(94vw, calc(86vh * (${CONFIG.width} / ${CONFIG.height})))`;
+
+                window.__ofoqFps = CONFIG.fps;
+                window.__ofoqTotalFrames = Math.ceil(CONFIG.duration * CONFIG.fps);
+                window.__ofoqOutputFilename = `${OUTPUT_FILENAME}.mp4`;
+
+                if (audioBuffer) {
+                    const wavBlob = audioBufferToWavBlob(audioBuffer);
+                    audioAudioEl = new Audio(URL.createObjectURL(wavBlob));
+                    window.__ofoqAudioWavBase64 = arrayBufferToBase64(await wavBlob.arrayBuffer());
+                }
+
+                statusText.textContent = "جاهز للعرض والتصدير ✓";
+                spinner.style.display = 'none';
+                window.renderStatus = 'ready';
+                await drawSceneAtTime(0);
+            } catch (err) {
+                logToConsole("خطأ أثناء التهيئة: " + err.message, 'error');
+                statusText.textContent = "حدث خطأ أثناء التحميل";
+                window.__renderError = err.message;
+                window.renderStatus = 'error';
+            }
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
